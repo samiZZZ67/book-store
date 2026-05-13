@@ -129,6 +129,30 @@ python manage.py set_telegram_webhook --base-url https://your-service.onrender.c
 
 7. Ask each configured Telegram admin to send `/start` to the bot. The dashboard will show their chat IDs after registration.
 
+### Manual Render service settings
+
+If you created the Render Web Service manually instead of using the Blueprint, set these exactly:
+
+```text
+Build Command: bash build.sh
+Start Command: bash start.sh
+```
+
+The start script runs:
+
+```bash
+python manage.py migrate --noinput
+gunicorn pdfsite.wsgi:application --bind 0.0.0.0:${PORT:-8000}
+```
+
+Also create a Render PostgreSQL database and add this environment variable to the web service:
+
+```text
+DATABASE_URL=<your Render Postgres Internal Database URL>
+```
+
+If `DATABASE_URL` is missing, Django falls back to SQLite. That is why you saw `no such table: library_pdfbook` on Render.
+
 ## Optional PostgreSQL
 
 For PostgreSQL, install a PostgreSQL server and the Python driver:

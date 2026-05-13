@@ -3,7 +3,7 @@ services:
     name: pdf-library
     env: python
     buildCommand: bash build.sh
-    startCommand: python manage.py migrate && gunicorn pdfsite.wsgi:application --bind 0.0.0.0:$PORT
+    startCommand: bash start.sh
     envVars:
       - key: DJANGO_DEBUG
         value: "0"
