@@ -153,7 +153,7 @@ Also create a Render PostgreSQL database and add this environment variable to th
 DATABASE_URL=<your Render Postgres Internal Database URL>
 ```
 
-If `DATABASE_URL` is missing, Django falls back to SQLite. That is why you saw `no such table: library_pdfbook` on Render.
+Use the Internal Database URL, not the External Database URL, when the Django app is also hosted on Render. If `DATABASE_URL` is missing in production, the app now fails fast with a clear configuration error instead of silently using SQLite.
 
 ## Optional PostgreSQL
 

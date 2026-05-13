@@ -2,6 +2,8 @@ import os
 from importlib.util import find_spec
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -59,11 +61,14 @@ TEMPLATES = [
 WSGI_APPLICATION = "pdfsite.wsgi.application"
 ASGI_APPLICATION = "pdfsite.asgi.application"
 
-if os.environ.get("DATABASE_URL"):
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if DATABASE_URL:
     import dj_database_url
 
     DATABASES = {
         "default": dj_database_url.config(
+            default=DATABASE_URL,
             conn_max_age=600,
             ssl_require=os.environ.get("DB_SSL_REQUIRE", "1") == "1",
         )
@@ -79,13 +84,18 @@ elif os.environ.get("DB_ENGINE") == "postgresql":
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         }
     }
-else:
+elif DEBUG or os.environ.get("ALLOW_SQLITE_IN_PRODUCTION") == "1":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
+else:
+    raise ImproperlyConfigured(
+        "DATABASE_URL is required when DJANGO_DEBUG=0. Add your Render PostgreSQL "
+        "Internal Database URL to the web service environment variables."
+    )
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
