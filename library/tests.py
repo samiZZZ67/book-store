@@ -1,11 +1,13 @@
 import json
 import tempfile
+from io import BytesIO
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from PIL import Image
 
 from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
 
@@ -46,9 +48,13 @@ class BookAccessTests(TestCase):
         )
 
     def thumbnail_file(self, filename="cover.png"):
+        image_file = BytesIO()
+        image = Image.new("RGB", (1800, 2400), "#2c6f83")
+        image.save(image_file, format="PNG")
+        image_file.seek(0)
         return SimpleUploadedFile(
             filename,
-            b"\x89PNG\r\n\x1a\n" + b"thumbnail-data",
+            image_file.getvalue(),
             content_type="image/png",
         )
 
@@ -116,11 +122,16 @@ class BookAccessTests(TestCase):
 
         self.assertRedirects(response, reverse("admin_dashboard"))
         self.book.refresh_from_db()
-        self.assertEqual(self.book.thumbnail_filename, "cover.png")
+        self.assertEqual(self.book.thumbnail_filename, "cover.jpg")
+
+        with self.book.thumbnail.open("rb") as thumbnail:
+            image = Image.open(thumbnail)
+            self.assertEqual(image.size, (480, 640))
+            self.assertEqual(image.format, "JPEG")
 
         response = self.client.get(reverse("book_thumbnail", args=[self.book.id]))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response["Content-Type"], "image/jpeg")
         response.close()
 
     @override_settings(TELEGRAM_BOT_TOKEN="token", TELEGRAM_ADMIN_USERNAMES=[])

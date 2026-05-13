@@ -1,6 +1,7 @@
 import secrets
 import json
 import mimetypes
+from io import BytesIO
 from datetime import timedelta
 from functools import wraps
 
@@ -9,6 +10,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -32,6 +34,7 @@ from .telegram import (
 
 
 PDF_TOKEN_MINUTES = 10
+THUMBNAIL_OUTPUT_SIZE = (480, 640)
 THUMBNAIL_SIGNATURES = {
     ".jpg": (b"\xff\xd8\xff",),
     ".jpeg": (b"\xff\xd8\xff",),
@@ -145,6 +148,47 @@ def validate_thumbnail(uploaded_file):
 
     uploaded_file.name = filename
     return True, ""
+
+
+def resized_thumbnail(uploaded_file):
+    if not uploaded_file:
+        return None, ""
+
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+    except ImportError:
+        return None, "Install Pillow to resize thumbnail images."
+
+    try:
+        image = Image.open(uploaded_file)
+        image = ImageOps.exif_transpose(image)
+        image = ImageOps.fit(
+            image,
+            THUMBNAIL_OUTPUT_SIZE,
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+    except (OSError, UnidentifiedImageError):
+        uploaded_file.seek(0)
+        return None, "Thumbnail image could not be processed."
+
+    has_transparency = image.mode in ("RGBA", "LA") or (
+        image.mode == "P" and "transparency" in image.info
+    )
+    if has_transparency:
+        image = image.convert("RGBA")
+        background = Image.new("RGB", image.size, "#ffffff")
+        background.paste(image, mask=image.getchannel("A"))
+        image = background
+    else:
+        image = image.convert("RGB")
+
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=86, optimize=True, progressive=True)
+    output.seek(0)
+
+    base_name = get_valid_filename(uploaded_file.name).rsplit(".", 1)[0] or "thumbnail"
+    return ContentFile(output.getvalue(), name=f"{base_name}.jpg"), ""
 
 
 def book_status_map(user, books):
@@ -490,6 +534,10 @@ def upload_pdf(request):
     if not thumbnail_valid:
         messages.error(request, thumbnail_error)
         return redirect("admin_dashboard")
+    thumbnail_file, thumbnail_error = resized_thumbnail(thumbnail_file)
+    if thumbnail_error:
+        messages.error(request, thumbnail_error)
+        return redirect("admin_dashboard")
 
     uploaded_file.name = filename
     thumbnail_filename = thumbnail_file.name if thumbnail_file else ""
@@ -517,6 +565,10 @@ def update_book_thumbnail(request, book_id):
 
     thumbnail_valid, thumbnail_error = validate_thumbnail(thumbnail_file)
     if not thumbnail_valid:
+        messages.error(request, thumbnail_error)
+        return redirect("admin_dashboard")
+    thumbnail_file, thumbnail_error = resized_thumbnail(thumbnail_file)
+    if thumbnail_error:
         messages.error(request, thumbnail_error)
         return redirect("admin_dashboard")
 

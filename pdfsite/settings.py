@@ -127,7 +127,7 @@ if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
     CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}")
 
 MAX_UPLOAD_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))
-MAX_THUMBNAIL_SIZE = int(os.environ.get("MAX_THUMBNAIL_SIZE", str(3 * 1024 * 1024)))
+MAX_THUMBNAIL_SIZE = int(os.environ.get("MAX_THUMBNAIL_SIZE", str(12 * 1024 * 1024)))
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 TELEGRAM_ADMIN_USERNAMES = env_list("TELEGRAM_ADMIN_USERNAMES", "")

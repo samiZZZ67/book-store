@@ -524,6 +524,12 @@ th {
     padding: 7px 10px;
 }
 
+.reader-toolbar button.is-active {
+    border-color: #17202a;
+    background: #17202a;
+    color: #fff;
+}
+
 .reader-page-jump {
     margin: 0;
     color: #526170;
@@ -533,64 +539,10 @@ th {
     width: 72px;
 }
 
-.search-input {
-    width: 180px;
-}
-
-.toolbar-divider {
-    width: 1px;
-    align-self: stretch;
-    min-height: 32px;
-    background: #d7dde3;
-}
-
-.reader-progress-bar {
-    height: 5px;
-    background: #e5eaf0;
-}
-
-.reader-progress-bar span {
-    display: block;
-    width: 0;
-    height: 100%;
-    background: #0f6c81;
-    transition: width 180ms ease;
-}
-
 .reader-workspace {
     display: flex;
     flex: 1 1 auto;
     min-height: 0;
-}
-
-.page-sidebar {
-    flex: 0 0 160px;
-    overflow: auto;
-    border-right: 1px solid #d7dde3;
-    background: #ffffff;
-}
-
-.page-sidebar.collapsed {
-    display: none;
-}
-
-.page-list {
-    display: grid;
-    gap: 4px;
-    padding: 8px;
-}
-
-.page-list button {
-    width: 100%;
-    margin: 0;
-    padding: 7px 8px;
-    text-align: left;
-}
-
-.page-list button.active {
-    border-color: #0f6c81;
-    background: #dff3f7;
-    color: #0b5667;
 }
 
 .canvas-shell {
@@ -623,40 +575,12 @@ th {
     color: #526170;
 }
 
-.reader-app[data-theme="dark"] {
-    background: #151a1f;
-    color: #eaf1f7;
-}
-
-.reader-app[data-theme="dark"] .reader-header,
-.reader-app[data-theme="dark"] .reader-toolbar,
-.reader-app[data-theme="dark"] .page-sidebar {
-    border-color: #303943;
-    background: #1e252c;
-}
-
-.reader-app[data-theme="dark"] .canvas-shell {
-    background: #101418;
-}
-
-.reader-app[data-theme="dark"] canvas {
-    filter: invert(1) hue-rotate(180deg);
-}
-
-.reader-app[data-theme="sepia"] .canvas-shell {
-    background: #e8dcc8;
-}
-
-.reader-app[data-theme="sepia"] canvas {
-    filter: sepia(0.22) saturate(0.92);
-}
-
-.reader-app[data-theme="contrast"] .canvas-shell {
+.reader-app[data-contrast="1"] .canvas-shell {
     background: #000;
 }
 
-.reader-app[data-theme="contrast"] canvas {
-    filter: contrast(1.22);
+.reader-app[data-contrast="1"] canvas {
+    filter: contrast(1.35) brightness(1.04);
 }
 
 .reader-app:fullscreen {
@@ -712,29 +636,13 @@ th {
 
     .reader-toolbar button,
     .reader-toolbar select,
-    .reader-toolbar input,
-    .search-input {
+    .reader-toolbar input {
         flex: 1 1 130px;
         width: auto;
     }
 
-    .toolbar-divider {
-        display: none;
-    }
-
     .reader-workspace {
         flex-direction: column;
-    }
-
-    .page-sidebar {
-        flex: 0 0 auto;
-        max-height: 160px;
-        border-right: 0;
-        border-bottom: 1px solid #d7dde3;
-    }
-
-    .page-list {
-        grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
     }
 
     .book-list li {
