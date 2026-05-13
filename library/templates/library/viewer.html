@@ -1,0 +1,95 @@
+{% extends "library/base.html" %}
+{% load static %}
+
+{% block title %}{{ book.title }}{% endblock %}
+{% block main_class %}viewer-page{% endblock %}
+
+{% block content %}
+<div
+    id="reader-app"
+    class="reader-app"
+    data-pdf-url="{{ stream_url }}"
+    data-book-id="{{ book.id }}"
+    data-book-title="{{ book.title }}"
+>
+    <header class="reader-header">
+        <div>
+            <h1>{{ book.title }}</h1>
+            <div class="reader-progress">
+                <span id="page-status">Loading</span>
+                <span id="read-timer">00:00</span>
+            </div>
+        </div>
+        <div class="actions">
+            <a class="button" href="{% url 'home' %}">Library</a>
+            <button id="fullscreen-btn" type="button">Fullscreen</button>
+        </div>
+    </header>
+
+    <div class="reader-toolbar" aria-label="PDF reader controls">
+        <button id="sidebar-toggle" type="button">Pages</button>
+        <button id="first-page" type="button">First</button>
+        <button id="prev-page" type="button">Prev</button>
+        <label class="reader-page-jump" for="page-number">Page</label>
+        <input id="page-number" type="number" min="1" value="1">
+        <span id="page-count">/ 0</span>
+        <button id="next-page" type="button">Next</button>
+        <button id="last-page" type="button">Last</button>
+
+        <span class="toolbar-divider"></span>
+
+        <button id="zoom-out" type="button">Zoom Out</button>
+        <select id="zoom-select" aria-label="Zoom level">
+            <option value="0.5">50%</option>
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+        </select>
+        <button id="zoom-in" type="button">Zoom In</button>
+        <button id="fit-width" type="button">Fit Width</button>
+        <button id="fit-page" type="button">Fit Page</button>
+
+        <span class="toolbar-divider"></span>
+
+        <button id="rotate-left" type="button">Rotate Left</button>
+        <button id="rotate-right" type="button">Rotate Right</button>
+        <button id="bookmark-page" type="button">Bookmark</button>
+        <button id="resume-page" type="button">Resume</button>
+
+        <span class="toolbar-divider"></span>
+
+        <input id="search-input" class="search-input" type="search" placeholder="Find text">
+        <button id="search-prev" type="button">Find Prev</button>
+        <button id="search-next" type="button">Find Next</button>
+        <span id="search-status" class="small"></span>
+
+        <select id="theme-select" aria-label="Reader theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="sepia">Sepia</option>
+            <option value="contrast">Contrast</option>
+        </select>
+    </div>
+
+    <div class="reader-progress-bar" aria-hidden="true">
+        <span id="progress-bar-fill"></span>
+    </div>
+
+    <div class="reader-workspace">
+        <aside id="page-sidebar" class="page-sidebar" aria-label="Page list">
+            <div id="page-list" class="page-list"></div>
+        </aside>
+        <section id="canvas-shell" class="canvas-shell">
+            <p id="reader-loading" class="reader-loading">Loading PDF...</p>
+            <canvas id="pdf-canvas"></canvas>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="{% static 'library/reader.js' %}"></script>
+{% endblock %}

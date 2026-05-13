@@ -1,0 +1,35 @@
+{% extends "library/base.html" %}
+
+{% block title %}PDF Books{% endblock %}
+
+{% block content %}
+<h1>PDF Library</h1>
+
+<section class="toolbar">
+    <div>
+        {% if current_user %}
+            <p class="small account-line">Signed in as <strong>{{ current_user.username }}</strong></p>
+        {% else %}
+            <p class="small account-line">Sign in to request access to individual books.</p>
+        {% endif %}
+    </div>
+    <div class="actions">
+        {% if current_user %}
+            {% if current_user.is_admin %}
+                <a class="button" href="{% url 'admin_dashboard' %}">Admin</a>
+            {% endif %}
+            <a class="button" href="{% url 'request_access' %}">My Requests</a>
+            <a class="button" href="{% url 'logout' %}">Logout</a>
+        {% else %}
+            <a class="button button-primary" href="{% url 'login' %}">Login</a>
+            <a class="button" href="{% url 'signup' %}">Sign Up</a>
+        {% endif %}
+    </div>
+</section>
+
+<section class="section-heading">
+    <h2>Uploaded Books/PDF Titles</h2>
+</section>
+
+{% include "library/_book_cards.html" %}
+{% endblock %}

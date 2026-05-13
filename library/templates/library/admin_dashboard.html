@@ -1,0 +1,207 @@
+{% extends "library/base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<h1>Admin Dashboard</h1>
+<p class="small">
+    Admin: {{ current_user.username }} |
+    <a href="{% url 'home' %}">Home</a> |
+    <a href="{% url 'logout' %}">Logout</a>
+</p>
+
+<section class="panel">
+    <h2>Upload PDF Books</h2>
+    <form method="post" action="{% url 'upload_pdf' %}" enctype="multipart/form-data">
+        {% csrf_token %}
+        <label for="title">PDF title</label>
+        <input id="title" name="title" type="text" required>
+
+        <label for="pdf">PDF file</label>
+        <input id="pdf" name="pdf" type="file" accept="application/pdf,.pdf" required>
+
+        <label for="thumbnail">Book thumbnail</label>
+        <input id="thumbnail" name="thumbnail" type="file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
+
+        <button type="submit">Upload PDF</button>
+    </form>
+</section>
+
+<section class="panel">
+    <h2>Telegram Notifications</h2>
+    <p class="small">
+        Bot token:
+        {% if telegram_bot_configured %}
+            Configured
+        {% else %}
+            Missing
+        {% endif %}
+        |
+        Webhook secret:
+        {% if telegram_webhook_configured %}
+            Configured
+        {% else %}
+            Missing
+        {% endif %}
+    </p>
+    <p class="small">Webhook path: {{ telegram_webhook_path }}</p>
+
+    <form class="telegram-admin-form" method="post" action="{% url 'add_telegram_admin' %}">
+        {% csrf_token %}
+        <label for="telegram_username">Admin Telegram username</label>
+        <div class="input-row">
+            <input id="telegram_username" name="telegram_username" type="text" placeholder="username_without_at" maxlength="32" required>
+            <button type="submit">Add Admin</button>
+        </div>
+    </form>
+
+    {% if telegram_admins %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Chat ID</th>
+                    <th>Registered</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for telegram_admin in telegram_admins %}
+                    <tr>
+                        <td>@{{ telegram_admin.username }}</td>
+                        <td>
+                            {% if telegram_admin.chat_id %}
+                                {{ telegram_admin.chat_id }}
+                            {% else %}
+                                Waiting for /start
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if telegram_admin.registered_at %}
+                                {{ telegram_admin.registered_at|date:"M j, Y H:i" }}
+                            {% else %}
+                                Not connected
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if telegram_admin.is_configured %}
+                                From env
+                            {% else %}
+                                <form class="inline" method="post" action="{% url 'remove_telegram_admin' telegram_admin.id %}">
+                                    {% csrf_token %}
+                                    <button class="button-compact button-danger" type="submit">Remove</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No Telegram admins added. Add up to {{ max_telegram_admins }} usernames.</p>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <h2>User Access Requests</h2>
+    {% if requests %}
+        <table>
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Book</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for access_request in requests %}
+                    <tr>
+                        <td>{{ access_request.username }}</td>
+                        <td>{{ access_request.email }}</td>
+                        <td>{{ access_request.book_title }}</td>
+                        <td>{{ access_request.status|title }}</td>
+                        <td>
+                            {% if access_request.status == "pending" %}
+                                <form class="inline" method="post" action="{% url 'decide_request' access_request.id 'approved' %}">
+                                    {% csrf_token %}
+                                    <button class="button-compact" type="submit">Approve</button>
+                                </form>
+                                <form class="inline" method="post" action="{% url 'decide_request' access_request.id 'rejected' %}">
+                                    {% csrf_token %}
+                                    <button class="button-compact button-danger" type="submit">Reject</button>
+                                </form>
+                            {% else %}
+                                Done
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No access requests.</p>
+    {% endif %}
+</section>
+
+<section class="panel">
+    <h2>Manage Uploaded PDFs</h2>
+    {% if books %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Cover</th>
+                    <th>Title</th>
+                    <th>File</th>
+                    <th>Thumbnail</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for book in books %}
+                    <tr>
+                        <td>
+                            <div class="admin-cover-thumb">
+                                {% if book.thumbnail_url %}
+                                    <img src="{{ book.thumbnail_url }}" alt="">
+                                {% else %}
+                                    <span>{{ book.title|first|upper }}</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td>{{ book.title }}</td>
+                        <td>{{ book.filename }}</td>
+                        <td>
+                            {% if book.thumbnail_filename %}
+                                <p class="small table-note">{{ book.thumbnail_filename }}</p>
+                            {% else %}
+                                <p class="small table-note">No thumbnail</p>
+                            {% endif %}
+                            <form class="thumbnail-form" method="post" action="{% url 'update_book_thumbnail' book.id %}" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                <input name="thumbnail" type="file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" required>
+                                <button class="button-compact" type="submit">Update</button>
+                            </form>
+                            {% if book.thumbnail_url %}
+                                <form class="inline" method="post" action="{% url 'remove_book_thumbnail' book.id %}">
+                                    {% csrf_token %}
+                                    <button class="button-compact button-danger" type="submit">Remove</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form class="inline" method="post" action="{% url 'delete_book' book.id %}">
+                                {% csrf_token %}
+                                <button class="button-compact button-danger" type="submit">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No PDFs uploaded.</p>
+    {% endif %}
+</section>
+{% endblock %}

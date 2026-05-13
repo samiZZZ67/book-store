@@ -1,0 +1,19 @@
+{% extends "library/base.html" %}
+
+{% block title %}Request Access{% endblock %}
+
+{% block content %}
+<h1>Request Book Access</h1>
+
+<section class="toolbar">
+    <div>
+        <p class="small account-line">Signed in as <strong>{{ current_user.username }}</strong></p>
+    </div>
+    <div class="actions">
+        <a class="button" href="{% url 'home' %}">Home</a>
+        <a class="button" href="{% url 'logout' %}">Logout</a>
+    </div>
+</section>
+
+{% include "library/_book_cards.html" %}
+{% endblock %}

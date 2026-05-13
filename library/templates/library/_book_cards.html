@@ -1,0 +1,46 @@
+{% if books %}
+    <section class="book-grid">
+        {% for book in books %}
+            <article class="book-card">
+                <div class="book-cover" aria-hidden="true">
+                    {% if book.thumbnail_url %}
+                        <img src="{{ book.thumbnail_url }}" alt="">
+                    {% else %}
+                        <div class="book-cover-placeholder">
+                            <span>{{ book.title|first|upper }}</span>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="book-card-main">
+                    <div>
+                        <h3>{{ book.title }}</h3>
+                        <p class="small book-meta">Uploaded {{ book.created_at|date:"M j, Y" }}</p>
+                    </div>
+                    <span class="status-pill status-{{ book.access_status }}">{{ book.access_label }}</span>
+                </div>
+
+                <div class="book-card-actions">
+                    {% if book.can_read %}
+                        <a class="button button-primary" href="{% url 'viewer' book.id %}">Read</a>
+                    {% elif book.can_request %}
+                        <form class="inline" method="post" action="{% url 'request_book_access' book.id %}">
+                            {% csrf_token %}
+                            <button class="button button-primary" type="submit">{{ book.request_button_label }}</button>
+                        </form>
+                    {% elif book.access_status == "pending" %}
+                        <button class="button button-disabled" type="button" disabled>Pending</button>
+                    {% elif current_user %}
+                        <button class="button button-disabled" type="button" disabled>Unavailable</button>
+                    {% else %}
+                        <a class="button" href="{% url 'login' %}">Login to Request</a>
+                    {% endif %}
+                </div>
+            </article>
+        {% endfor %}
+    </section>
+{% else %}
+    <section class="empty-state">
+        <p>No PDFs uploaded.</p>
+    </section>
+{% endif %}

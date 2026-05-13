@@ -1,0 +1,21 @@
+{% extends "library/base.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<section class="panel narrow">
+    <h1>Login</h1>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <label for="login">Email or username</label>
+        <input id="login" name="login" type="text" required>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required>
+
+        <button type="submit">Login</button>
+    </form>
+    <p class="small"><a href="{% url 'home' %}">Home</a></p>
+</section>
+{% endblock %}

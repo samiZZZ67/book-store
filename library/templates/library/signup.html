@@ -1,0 +1,23 @@
+{% extends "library/base.html" %}
+
+{% block title %}Sign Up{% endblock %}
+
+{% block content %}
+<section class="panel narrow">
+    <h1>Sign Up</h1>
+    <form method="post">
+        {% csrf_token %}
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" required>
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required>
+
+        <button type="submit">Sign Up</button>
+    </form>
+    <p class="small"><a href="{% url 'home' %}">Home</a></p>
+</section>
+{% endblock %}
