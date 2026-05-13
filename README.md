@@ -138,6 +138,8 @@ Build Command: bash build.sh
 Start Command: bash start.sh
 ```
 
+If Render shows `Running 'gunicorn pdfsite.wsgi'` in the logs, the Start Command is still wrong.
+
 The start script runs:
 
 ```bash
