@@ -12,7 +12,7 @@ from django.urls import reverse
 from PIL import Image
 
 from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
-from .storage import CloudinaryRawStorage, cloudinary_file_response
+from .storage import CloudinaryDeliveryError, CloudinaryRawStorage, cloudinary_file_response
 
 
 class BookAccessTests(TestCase):
@@ -137,6 +137,20 @@ class BookAccessTests(TestCase):
         self.assertEqual(response["Content-Type"], "image/jpeg")
         response.close()
 
+    def test_thumbnail_delivery_failure_returns_controlled_error(self):
+        self.book.thumbnail.name = "book_thumbnails/missing.jpg"
+        self.book.thumbnail_filename = "missing.jpg"
+        self.book.save(update_fields=["thumbnail", "thumbnail_filename", "updated_at"])
+
+        with patch(
+            "django.db.models.fields.files.FieldFile.open",
+            side_effect=Exception("storage unavailable"),
+        ):
+            response = self.client.get(reverse("book_thumbnail", args=[self.book.id]))
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(b"Could not load this thumbnail", response.content)
+
     def test_admin_ajax_pdf_upload_returns_redirect_payload(self):
         self.client.force_login(self.admin)
 
@@ -255,6 +269,72 @@ class BookAccessTests(TestCase):
             response["Content-Range"],
             f"bytes 0-3/{self.book.pdf_file.size}",
         )
+
+    @override_settings(USE_CLOUDINARY_STORAGE=True)
+    def test_pdf_stream_delivery_failure_returns_controlled_error(self):
+        AccessRequest.objects.create(
+            user=self.user,
+            book=self.book,
+            status=AccessRequest.STATUS_APPROVED,
+            decided_by=self.admin,
+        )
+        self.client.force_login(self.user)
+        self.client.get(reverse("viewer", args=[self.book.id]))
+        token_data = self.client.session["pdf_tokens"][str(self.book.id)]
+
+        with patch(
+            "library.views.cloudinary_file_response",
+            side_effect=CloudinaryDeliveryError("Cloudinary blocked PDF delivery"),
+        ):
+            response = self.client.get(
+                reverse("pdf_stream", args=[self.book.id]),
+                {"token": token_data["token"]},
+            )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(b"Cloudinary blocked PDF delivery", response.content)
+
+    @override_settings(USE_CLOUDINARY_STORAGE=True)
+    def test_pdf_stream_slices_cloudinary_full_response_for_range_request(self):
+        class FakeRemoteResponse:
+            status = 200
+
+            def __init__(self, payload):
+                self.payload = BytesIO(payload)
+
+            def read(self, size=-1):
+                return self.payload.read(size)
+
+            def close(self):
+                pass
+
+        AccessRequest.objects.create(
+            user=self.user,
+            book=self.book,
+            status=AccessRequest.STATUS_APPROVED,
+            decided_by=self.admin,
+        )
+        self.client.force_login(self.user)
+        self.client.get(reverse("viewer", args=[self.book.id]))
+        token_data = self.client.session["pdf_tokens"][str(self.book.id)]
+        payload = b"0123456789abcdef"
+
+        with patch(
+            "library.views.cloudinary_range_response",
+            return_value=(FakeRemoteResponse(payload), {"Content-Length": str(len(payload))}),
+        ):
+            response = self.client.get(
+                reverse("pdf_stream", args=[self.book.id]),
+                {"token": token_data["token"]},
+                HTTP_RANGE="bytes=5-8",
+            )
+            body = b"".join(response.streaming_content)
+            response.close()
+
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(body, b"5678")
+        self.assertEqual(response["Content-Length"], "4")
+        self.assertEqual(response["Content-Range"], f"bytes 5-8/{self.book.pdf_file.size}")
 
     def test_delete_book_does_not_crash_when_storage_cleanup_fails(self):
         self.client.force_login(self.admin)

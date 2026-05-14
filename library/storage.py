@@ -1,5 +1,5 @@
 from io import BytesIO
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
@@ -44,9 +44,13 @@ class CloudinaryRawStorage(Storage):
         if "b" not in mode:
             raise ValueError("CloudinaryRawStorage only supports binary reads.")
 
-        request = Request(self.url(name), headers={"User-Agent": "pdf-library"})
-        with urlopen(request, timeout=getattr(settings, "CLOUDINARY_DOWNLOAD_TIMEOUT", 20)) as response:
+        response = None
+        try:
+            response, _ = cloudinary_asset_response(name)
             return File(BytesIO(response.read()), name=name)
+        finally:
+            if response is not None:
+                response.close()
 
     def _save(self, name, content):
         _, _, uploader, _ = self._cloudinary_modules()
@@ -148,8 +152,17 @@ def cloudinary_asset_response(name, headers=None):
     headers = headers or {"User-Agent": "pdf-library"}
     errors = []
 
-    urls = [storage.url(name)]
-    urls.extend(private_download_urls(storage, name))
+    try:
+        urls = [storage.url(name)]
+    except Exception as exc:
+        urls = []
+        errors.append(f"public URL build failed: {exc}")
+
+    try:
+        urls.extend(private_download_urls(storage, name))
+    except Exception as exc:
+        errors.append(f"signed URL build failed: {exc}")
+
     for url in urls:
         try:
             response = open_cloudinary_url(url, headers)
@@ -157,11 +170,14 @@ def cloudinary_asset_response(name, headers=None):
         except HTTPError as error:
             errors.append(f"{error.code} {error.reason}")
             error.close()
+        except (URLError, TimeoutError, OSError, ValueError) as error:
+            errors.append(str(error))
 
     raise CloudinaryDeliveryError(
         "Could not fetch Cloudinary asset. Cloudinary may be blocking PDF delivery. "
         "In Cloudinary Console, enable Security > Allow delivery of PDF and ZIP files, "
-        "or verify signed download access. Upstream errors: " + " | ".join(errors)
+        "or verify signed download access. Upstream errors: "
+        + (" | ".join(errors) if errors else "no usable Cloudinary URL")
     )
 
 

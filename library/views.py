@@ -125,7 +125,7 @@ def redirect_or_json(request, view_name):
 
 
 def storage_failure_response(request, action, exc):
-    logger.exception("%s failed while writing to storage: %s", action, exc)
+    logger.warning("%s failed while writing to storage: %s", action, exc)
     message = (
         f"{action} failed while saving to storage. Check your Cloudinary credentials "
         "and run `python manage.py cloudinary_status --write-test` in Render Shell. "
@@ -784,7 +784,16 @@ def book_thumbnail(request, book_id):
         or mimetypes.guess_type(book.thumbnail.name)[0]
         or "application/octet-stream"
     )
-    response = FileResponse(book.thumbnail.open("rb"), content_type=content_type)
+    try:
+        response = FileResponse(book.thumbnail.open("rb"), content_type=content_type)
+    except Exception as exc:
+        logger.warning("Could not deliver thumbnail %s: %s", book.thumbnail.name, exc)
+        return HttpResponse(
+            "Could not load this thumbnail from storage.",
+            status=502,
+            content_type="text/plain",
+        )
+
     response["Cache-Control"] = "public, max-age=3600"
     response["X-Content-Type-Options"] = "nosniff"
     return response
@@ -884,12 +893,28 @@ def stream_protected_file(book, start=0, length=None):
         file_handle.close()
 
 
-def stream_remote_file(remote_response):
+def stream_remote_file(remote_response, start=0, length=None):
     try:
+        remaining_skip = start
+        while remaining_skip > 0:
+            skipped = remote_response.read(min(PDF_STREAM_CHUNK_SIZE, remaining_skip))
+            if not skipped:
+                return
+            remaining_skip -= len(skipped)
+
+        remaining = length
         while True:
-            chunk = remote_response.read(PDF_STREAM_CHUNK_SIZE)
+            read_size = PDF_STREAM_CHUNK_SIZE
+            if remaining is not None:
+                if remaining <= 0:
+                    break
+                read_size = min(read_size, remaining)
+
+            chunk = remote_response.read(read_size)
             if not chunk:
                 break
+            if remaining is not None:
+                remaining -= len(chunk)
             yield chunk
     finally:
         remote_response.close()
@@ -921,7 +946,7 @@ def pdf_stream(request, book_id):
     try:
         file_size = book.pdf_file.size
     except Exception as exc:
-        logger.exception("Could not read PDF file size for %s: %s", book.pdf_file.name, exc)
+        logger.warning("Could not read PDF file size for %s: %s", book.pdf_file.name, exc)
         return HttpResponse(
             "Could not read this PDF from storage. Check Cloudinary credentials and file delivery settings.",
             status=502,
@@ -945,7 +970,7 @@ def pdf_stream(request, book_id):
                     end,
                 )
             except CloudinaryDeliveryError as exc:
-                logger.exception("Could not deliver Cloudinary PDF %s: %s", book.pdf_file.name, exc)
+                logger.warning("Could not deliver Cloudinary PDF %s: %s", book.pdf_file.name, exc)
                 return HttpResponse(str(exc), status=502, content_type="text/plain")
 
             if remote_response is None:
@@ -954,21 +979,26 @@ def pdf_stream(request, book_id):
                 response["Content-Length"] = "0"
             else:
                 upstream_status = getattr(remote_response, "status", 206)
-                response_status = 206 if upstream_status == 206 else 200
+                upstream_honored_range = upstream_status == 206
                 response = StreamingHttpResponse(
-                    stream_remote_file(remote_response),
-                    status=response_status,
+                    stream_remote_file(
+                        remote_response,
+                        start=0 if upstream_honored_range else start,
+                        length=None if upstream_honored_range else content_length,
+                    ),
+                    status=206,
                     content_type="application/pdf",
                 )
                 response["Content-Length"] = remote_headers.get(
                     "Content-Length",
-                    str(content_length if response_status == 206 else file_size),
+                    str(content_length),
                 )
-                if response_status == 206:
-                    response["Content-Range"] = remote_headers.get(
-                        "Content-Range",
-                        f"bytes {start}-{end}/{file_size}",
-                    )
+                if not upstream_honored_range:
+                    response["Content-Length"] = str(content_length)
+                response["Content-Range"] = remote_headers.get(
+                    "Content-Range",
+                    f"bytes {start}-{end}/{file_size}",
+                )
         else:
             response = StreamingHttpResponse(
                 stream_protected_file(book, start=start, length=content_length),
@@ -982,7 +1012,7 @@ def pdf_stream(request, book_id):
             try:
                 remote_response, remote_headers = cloudinary_file_response(book.pdf_file.name)
             except CloudinaryDeliveryError as exc:
-                logger.exception("Could not deliver Cloudinary PDF %s: %s", book.pdf_file.name, exc)
+                logger.warning("Could not deliver Cloudinary PDF %s: %s", book.pdf_file.name, exc)
                 return HttpResponse(str(exc), status=502, content_type="text/plain")
 
             response = StreamingHttpResponse(
