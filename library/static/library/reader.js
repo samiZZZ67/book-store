@@ -383,6 +383,30 @@
             renderNearby(1);
         }).catch(function () {
             setControlsDisabled(true);
+            showLoadError();
+        });
+    }
+
+    function showLoadError() {
+        setLoading("Could not load this PDF.");
+
+        if (!window.fetch) {
+            return;
+        }
+
+        fetch(app.dataset.pdfUrl, {
+            credentials: "same-origin",
+            cache: "no-store"
+        }).then(function (response) {
+            if (response.ok) {
+                return "";
+            }
+            return response.text();
+        }).then(function (message) {
+            if (message) {
+                setLoading(message.slice(0, 360));
+            }
+        }).catch(function () {
             setLoading("Could not load this PDF.");
         });
     }

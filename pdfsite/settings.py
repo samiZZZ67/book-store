@@ -114,6 +114,7 @@ USE_CLOUDINARY_STORAGE = cloudinary_storage_flag == "1" or (
 )
 CLOUDINARY_STORAGE_PREFIX = os.environ.get("CLOUDINARY_STORAGE_PREFIX", "pdf-library")
 CLOUDINARY_DOWNLOAD_TIMEOUT = int(os.environ.get("CLOUDINARY_DOWNLOAD_TIMEOUT", "20"))
+CLOUDINARY_UPLOAD_CHUNK_SIZE = int(os.environ.get("CLOUDINARY_UPLOAD_CHUNK_SIZE", str(6 * 1024 * 1024)))
 if USE_CLOUDINARY_STORAGE:
     cloudinary_parts = {
         "CLOUD_NAME": os.environ.get("CLOUDINARY_CLOUD_NAME", ""),

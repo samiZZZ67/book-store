@@ -135,6 +135,14 @@ CLOUDINARY_STORAGE_PREFIX=pdf-library
 
 Uploaded PDFs are still served through the protected Django route, so users need login, approval, and a current viewer token to read from the site.
 
+Cloudinary can block public PDF delivery depending on the account security settings. The app first tries normal raw delivery and then falls back to a signed Cloudinary download URL. For best PDF support, enable Cloudinary Console > Settings > Security > **Allow delivery of PDF and ZIP files**.
+
+To verify upload, large upload, delete, and credentials from Render Shell:
+
+```bash
+python manage.py cloudinary_status --write-test --large-write-test
+```
+
 If you already have files in `private_media/`, copy them to Cloudinary under the same names before relying on Cloudinary in production:
 
 ```bash

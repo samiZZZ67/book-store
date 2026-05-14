@@ -14,12 +14,18 @@ class Command(BaseCommand):
             action="store_true",
             help="Upload and delete a tiny raw test asset.",
         )
+        parser.add_argument(
+            "--large-write-test",
+            action="store_true",
+            help="Upload and delete an 11 MiB raw test asset.",
+        )
 
     def handle(self, *args, **options):
         self.stdout.write("Cloudinary configuration")
         self.stdout.write(f"  Enabled: {settings.USE_CLOUDINARY_STORAGE}")
         self.stdout.write(f"  CLOUDINARY_URL: {'set' if settings.CLOUDINARY_URL else 'missing'}")
         self.stdout.write(f"  Prefix: {settings.CLOUDINARY_STORAGE_PREFIX or '(none)'}")
+        self.stdout.write(f"  Upload chunk size: {settings.CLOUDINARY_UPLOAD_CHUNK_SIZE}")
 
         if not settings.USE_CLOUDINARY_STORAGE:
             self.stdout.write(self.style.WARNING("  Cloudinary storage is not enabled."))
@@ -44,19 +50,26 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"  Admin API ping failed: {exc}"))
             return
 
-        if not options["write_test"]:
+        if not options["write_test"] and not options["large_write_test"]:
             self.stdout.write("  Run with --write-test to verify upload and delete.")
+            self.stdout.write("  Run with --large-write-test to verify files over 10 MiB.")
             return
 
         storage = CloudinaryRawStorage()
-        name = "_diagnostics/cloudinary-delete-test.txt"
-        try:
-            if storage.exists(name):
-                storage.delete(name)
-            storage.save(name, ContentFile(b"cloudinary storage test\n"))
-            storage.delete(name)
-        except cloudinary.exceptions.Error as exc:
-            self.stdout.write(self.style.ERROR(f"  Raw upload/delete test failed: {exc}"))
-            return
+        tests = []
+        if options["write_test"]:
+            tests.append(("_diagnostics/cloudinary-delete-test.txt", b"cloudinary storage test\n"))
+        if options["large_write_test"]:
+            tests.append(("_diagnostics/cloudinary-large-delete-test.bin", b"0" * (11 * 1024 * 1024)))
 
-        self.stdout.write(self.style.SUCCESS("  Raw upload/delete test: ok"))
+        for name, data in tests:
+            try:
+                if storage.exists(name):
+                    storage.delete(name)
+                storage.save(name, ContentFile(data))
+                storage.delete(name)
+            except cloudinary.exceptions.Error as exc:
+                self.stdout.write(self.style.ERROR(f"  Raw upload/delete test failed for {name}: {exc}"))
+                return
+
+            self.stdout.write(self.style.SUCCESS(f"  Raw upload/delete test ok: {name}"))

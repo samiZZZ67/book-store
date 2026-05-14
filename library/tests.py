@@ -1,15 +1,18 @@
 import json
 import tempfile
 from io import BytesIO
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 
 from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
+from .storage import CloudinaryRawStorage, cloudinary_file_response
 
 
 class BookAccessTests(TestCase):
@@ -177,6 +180,53 @@ class BookAccessTests(TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertIn("PDF upload failed", response.json()["error"])
         self.assertIn("Invalid Signature", response.json()["error"])
+
+    @override_settings(CLOUDINARY_UPLOAD_CHUNK_SIZE=6 * 1024 * 1024)
+    def test_cloudinary_storage_uses_chunked_raw_upload(self):
+        storage = CloudinaryRawStorage()
+
+        with patch.object(storage, "exists", return_value=False), patch(
+            "cloudinary.uploader.upload_large",
+            return_value={"public_id": "ok"},
+        ) as upload:
+            saved_name = storage.save(
+                "protected_pdfs/example.pdf",
+                ContentFile(b"%PDF-1.4\n" + b"0" * 128),
+            )
+
+        self.assertEqual(saved_name, "protected_pdfs/example.pdf")
+        upload.assert_called_once()
+        _, kwargs = upload.call_args
+        self.assertEqual(kwargs["resource_type"], "raw")
+        self.assertEqual(kwargs["chunk_size"], 6 * 1024 * 1024)
+        self.assertEqual(kwargs["public_id"], "pdf-library/protected_pdfs/example.pdf")
+
+    def test_cloudinary_file_response_falls_back_to_signed_download(self):
+        class FakeResponse:
+            status = 200
+            headers = {"Content-Length": "8"}
+
+            def read(self, size=-1):
+                return b""
+
+            def close(self):
+                pass
+
+        forbidden = HTTPError("https://public.example/file.pdf", 403, "Forbidden", {}, None)
+        fake_response = FakeResponse()
+
+        with patch("library.storage.CloudinaryRawStorage.url", return_value="https://public.example/file.pdf"), patch(
+            "cloudinary.utils.private_download_url",
+            return_value="https://private.example/file",
+        ), patch(
+            "library.storage.open_cloudinary_url",
+            side_effect=[forbidden, fake_response],
+        ) as open_url:
+            response, headers = cloudinary_file_response("protected_pdfs/example.pdf")
+
+        self.assertIs(response, fake_response)
+        self.assertEqual(headers["Content-Length"], "8")
+        self.assertEqual(open_url.call_args_list[1].args[0], "https://private.example/file")
 
     def test_pdf_stream_supports_byte_range_requests(self):
         AccessRequest.objects.create(

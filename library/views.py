@@ -23,7 +23,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
-from .storage import cloudinary_file_response, cloudinary_range_response
+from .storage import CloudinaryDeliveryError, cloudinary_file_response, cloudinary_range_response
 from .telegram import (
     configured_admin_usernames,
     is_valid_telegram_username,
@@ -895,6 +895,19 @@ def stream_remote_file(remote_response):
         remote_response.close()
 
 
+def protected_pdf_headers(response, file_size):
+    response["Content-Disposition"] = 'inline; filename="protected.pdf"'
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    response["Accept-Ranges"] = "bytes"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "frame-ancestors 'self'; default-src 'self'"
+    if file_size is not None and "Content-Length" not in response:
+        response["Content-Length"] = str(file_size)
+    return response
+
+
 @never_cache
 @login_required
 def pdf_stream(request, book_id):
@@ -905,7 +918,16 @@ def pdf_stream(request, book_id):
     if not valid_pdf_token(request, str(book_id)):
         return HttpResponseForbidden("Open the PDF from the website viewer.")
 
-    file_size = book.pdf_file.size
+    try:
+        file_size = book.pdf_file.size
+    except Exception as exc:
+        logger.exception("Could not read PDF file size for %s: %s", book.pdf_file.name, exc)
+        return HttpResponse(
+            "Could not read this PDF from storage. Check Cloudinary credentials and file delivery settings.",
+            status=502,
+            content_type="text/plain",
+        )
+
     byte_range = parse_byte_range(request.META.get("HTTP_RANGE", ""), file_size)
 
     if byte_range is UNSATISFIABLE_RANGE:
@@ -916,29 +938,37 @@ def pdf_stream(request, book_id):
         start, end = byte_range
         content_length = end - start + 1
         if settings.USE_CLOUDINARY_STORAGE:
-            remote_response, remote_headers = cloudinary_range_response(
-                book.pdf_file.name,
-                start,
-                end,
-            )
+            try:
+                remote_response, remote_headers = cloudinary_range_response(
+                    book.pdf_file.name,
+                    start,
+                    end,
+                )
+            except CloudinaryDeliveryError as exc:
+                logger.exception("Could not deliver Cloudinary PDF %s: %s", book.pdf_file.name, exc)
+                return HttpResponse(str(exc), status=502, content_type="text/plain")
+
             if remote_response is None:
                 response = HttpResponse(status=416)
                 response["Content-Range"] = f"bytes */{file_size}"
                 response["Content-Length"] = "0"
             else:
+                upstream_status = getattr(remote_response, "status", 206)
+                response_status = 206 if upstream_status == 206 else 200
                 response = StreamingHttpResponse(
                     stream_remote_file(remote_response),
-                    status=206,
+                    status=response_status,
                     content_type="application/pdf",
                 )
                 response["Content-Length"] = remote_headers.get(
                     "Content-Length",
-                    str(content_length),
+                    str(content_length if response_status == 206 else file_size),
                 )
-                response["Content-Range"] = remote_headers.get(
-                    "Content-Range",
-                    f"bytes {start}-{end}/{file_size}",
-                )
+                if response_status == 206:
+                    response["Content-Range"] = remote_headers.get(
+                        "Content-Range",
+                        f"bytes {start}-{end}/{file_size}",
+                    )
         else:
             response = StreamingHttpResponse(
                 stream_protected_file(book, start=start, length=content_length),
@@ -949,7 +979,12 @@ def pdf_stream(request, book_id):
             response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
     else:
         if settings.USE_CLOUDINARY_STORAGE:
-            remote_response, remote_headers = cloudinary_file_response(book.pdf_file.name)
+            try:
+                remote_response, remote_headers = cloudinary_file_response(book.pdf_file.name)
+            except CloudinaryDeliveryError as exc:
+                logger.exception("Could not deliver Cloudinary PDF %s: %s", book.pdf_file.name, exc)
+                return HttpResponse(str(exc), status=502, content_type="text/plain")
+
             response = StreamingHttpResponse(
                 stream_remote_file(remote_response),
                 content_type="application/pdf",
@@ -962,11 +997,4 @@ def pdf_stream(request, book_id):
             )
             response["Content-Length"] = str(file_size)
 
-    response["Content-Disposition"] = 'inline; filename="protected.pdf"'
-    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response["Pragma"] = "no-cache"
-    response["Expires"] = "0"
-    response["Accept-Ranges"] = "bytes"
-    response["X-Content-Type-Options"] = "nosniff"
-    response["Content-Security-Policy"] = "frame-ancestors 'self'; default-src 'self'"
-    return response
+    return protected_pdf_headers(response, file_size)
