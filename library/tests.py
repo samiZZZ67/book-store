@@ -134,6 +134,54 @@ class BookAccessTests(TestCase):
         self.assertEqual(response["Content-Type"], "image/jpeg")
         response.close()
 
+    def test_admin_ajax_pdf_upload_returns_redirect_payload(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("upload_pdf"),
+            {
+                "title": "Operating Systems",
+                "pdf": SimpleUploadedFile(
+                    "operating-systems.pdf",
+                    b"%PDF-1.4\n% uploaded pdf\n",
+                    content_type="application/pdf",
+                ),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["redirect_url"], reverse("admin_dashboard"))
+        self.assertTrue(PDFBook.objects.filter(title="Operating Systems").exists())
+
+    def test_pdf_stream_supports_byte_range_requests(self):
+        AccessRequest.objects.create(
+            user=self.user,
+            book=self.book,
+            status=AccessRequest.STATUS_APPROVED,
+            decided_by=self.admin,
+        )
+        self.client.force_login(self.user)
+        self.client.get(reverse("viewer", args=[self.book.id]))
+        token_data = self.client.session["pdf_tokens"][str(self.book.id)]
+
+        response = self.client.get(
+            reverse("pdf_stream", args=[self.book.id]),
+            {"token": token_data["token"]},
+            HTTP_RANGE="bytes=0-3",
+        )
+        body = b"".join(response.streaming_content)
+        response.close()
+
+        self.assertEqual(response.status_code, 206)
+        self.assertEqual(body, b"%PDF")
+        self.assertEqual(response["Accept-Ranges"], "bytes")
+        self.assertEqual(response["Content-Length"], "4")
+        self.assertEqual(
+            response["Content-Range"],
+            f"bytes 0-3/{self.book.pdf_file.size}",
+        )
+
     @override_settings(TELEGRAM_BOT_TOKEN="token", TELEGRAM_ADMIN_USERNAMES=[])
     def test_book_request_sends_telegram_notification(self):
         TelegramAdmin.objects.create(username="siteadmin", chat_id=123456)

@@ -3,6 +3,7 @@
 
 {% block title %}{{ book.title }}{% endblock %}
 {% block main_class %}viewer-page{% endblock %}
+{% block accessibility_controls %}{% endblock %}
 
 {% block content %}
 <div
@@ -25,9 +26,18 @@
     </header>
 
     <div class="reader-toolbar" aria-label="PDF reader controls">
-        <button id="contrast-toggle" type="button">Contrast 1</button>
-        <button id="first-page" type="button">First Page</button>
-        <button id="last-page" type="button">Last Page</button>
+        <label class="reader-page-jump" for="reader-contrast">Contrast</label>
+        <select id="reader-contrast" data-contrast-select>
+            <option value="default">Default</option>
+            <option value="high">High</option>
+            <option value="dark">Dark</option>
+            <option value="sepia">Sepia</option>
+            <option value="soft">Soft</option>
+        </select>
+        <button id="first-page" type="button">First</button>
+        <button id="prev-page" type="button">Up</button>
+        <button id="next-page" type="button">Down</button>
+        <button id="last-page" type="button">Last</button>
         <button id="fullscreen-btn" type="button">Full Screen</button>
         <button id="exit-fullscreen-btn" type="button">Exit Full Screen</button>
         <button id="fit-width" type="button">Fit Width</button>
@@ -39,8 +49,8 @@
 
     <div class="reader-workspace">
         <section id="canvas-shell" class="canvas-shell">
-            <p id="reader-loading" class="reader-loading">Loading PDF...</p>
-            <canvas id="pdf-canvas"></canvas>
+            <p id="reader-loading" class="reader-loading" role="status">Loading PDF...</p>
+            <div id="pdf-pages" class="pdf-pages" aria-label="Book pages"></div>
         </section>
     </div>
 </div>

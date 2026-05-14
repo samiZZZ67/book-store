@@ -11,7 +11,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
-from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -34,6 +34,8 @@ from .telegram import (
 
 
 PDF_TOKEN_MINUTES = 10
+PDF_STREAM_CHUNK_SIZE = 64 * 1024
+UNSATISFIABLE_RANGE = object()
 THUMBNAIL_OUTPUT_SIZE = (480, 640)
 THUMBNAIL_SIGNATURES = {
     ".jpg": (b"\xff\xd8\xff",),
@@ -103,6 +105,17 @@ def clean_next_url(request):
     if url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         return next_url
     return ""
+
+
+def wants_json_response(request):
+    return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
+def redirect_or_json(request, view_name):
+    redirect_url = reverse(view_name)
+    if wants_json_response(request):
+        return JsonResponse({"redirect_url": redirect_url})
+    return redirect(redirect_url)
 
 
 def book_access_label(status, is_admin=False):
@@ -513,31 +526,31 @@ def upload_pdf(request):
 
     if not title or not uploaded_file:
         messages.error(request, "Title and PDF file are required.")
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
 
     if uploaded_file.size > settings.MAX_UPLOAD_SIZE:
         messages.error(request, "PDF file is too large.")
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
 
     filename = get_valid_filename(uploaded_file.name)
     if not filename.lower().endswith(".pdf"):
         messages.error(request, "Only PDF files are allowed.")
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
 
     first_bytes = uploaded_file.read(4)
     uploaded_file.seek(0)
     if first_bytes != b"%PDF":
         messages.error(request, "The uploaded file is not a valid PDF.")
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
 
     thumbnail_valid, thumbnail_error = validate_thumbnail(thumbnail_file)
     if not thumbnail_valid:
         messages.error(request, thumbnail_error)
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
     thumbnail_file, thumbnail_error = resized_thumbnail(thumbnail_file)
     if thumbnail_error:
         messages.error(request, thumbnail_error)
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
 
     uploaded_file.name = filename
     thumbnail_filename = thumbnail_file.name if thumbnail_file else ""
@@ -550,7 +563,7 @@ def upload_pdf(request):
         uploaded_by=request.user,
     )
     messages.success(request, "PDF uploaded.")
-    return redirect("admin_dashboard")
+    return redirect_or_json(request, "admin_dashboard")
 
 
 @require_POST
@@ -561,16 +574,16 @@ def update_book_thumbnail(request, book_id):
 
     if not thumbnail_file:
         messages.error(request, "Choose an image thumbnail to upload.")
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
 
     thumbnail_valid, thumbnail_error = validate_thumbnail(thumbnail_file)
     if not thumbnail_valid:
         messages.error(request, thumbnail_error)
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
     thumbnail_file, thumbnail_error = resized_thumbnail(thumbnail_file)
     if thumbnail_error:
         messages.error(request, thumbnail_error)
-        return redirect("admin_dashboard")
+        return redirect_or_json(request, "admin_dashboard")
 
     if book.thumbnail:
         book.thumbnail.delete(save=False)
@@ -579,7 +592,7 @@ def update_book_thumbnail(request, book_id):
     book.thumbnail_filename = thumbnail_file.name
     book.save(update_fields=["thumbnail", "thumbnail_filename", "updated_at"])
     messages.success(request, f"Thumbnail updated for {book.title}.")
-    return redirect("admin_dashboard")
+    return redirect_or_json(request, "admin_dashboard")
 
 
 @require_POST
@@ -686,13 +699,55 @@ def valid_pdf_token(request, book_id):
     return bool(expires and timezone.now().timestamp() <= expires)
 
 
-def stream_protected_file(book):
+def parse_byte_range(range_header, file_size):
+    if not range_header or not range_header.startswith("bytes="):
+        return None
+
+    range_spec = range_header[len("bytes="):].split(",", 1)[0].strip()
+    if "-" not in range_spec:
+        return None
+
+    start_text, end_text = range_spec.split("-", 1)
+    try:
+        if not start_text:
+            suffix_length = int(end_text)
+            if suffix_length <= 0:
+                return None
+            start = max(file_size - suffix_length, 0)
+            end = file_size - 1
+        else:
+            start = int(start_text)
+            end = int(end_text) if end_text else file_size - 1
+    except ValueError:
+        return None
+
+    if start < 0 or end < start:
+        return None
+    if start >= file_size:
+        return UNSATISFIABLE_RANGE
+
+    return start, min(end, file_size - 1)
+
+
+def stream_protected_file(book, start=0, length=None):
     file_handle = book.pdf_file.open("rb")
     try:
+        if start:
+            file_handle.seek(start)
+
+        remaining = length
         while True:
-            chunk = file_handle.read(8192)
+            read_size = PDF_STREAM_CHUNK_SIZE
+            if remaining is not None:
+                if remaining <= 0:
+                    break
+                read_size = min(read_size, remaining)
+
+            chunk = file_handle.read(read_size)
             if not chunk:
                 break
+            if remaining is not None:
+                remaining -= len(chunk)
             yield chunk
     finally:
         file_handle.close()
@@ -708,16 +763,35 @@ def pdf_stream(request, book_id):
     if not valid_pdf_token(request, str(book_id)):
         return HttpResponseForbidden("Open the PDF from the website viewer.")
 
-    response = StreamingHttpResponse(
-        stream_protected_file(book),
-        content_type="application/pdf",
-    )
+    file_size = book.pdf_file.size
+    byte_range = parse_byte_range(request.META.get("HTTP_RANGE", ""), file_size)
+
+    if byte_range is UNSATISFIABLE_RANGE:
+        response = HttpResponse(status=416)
+        response["Content-Range"] = f"bytes */{file_size}"
+        response["Content-Length"] = "0"
+    elif byte_range:
+        start, end = byte_range
+        content_length = end - start + 1
+        response = StreamingHttpResponse(
+            stream_protected_file(book, start=start, length=content_length),
+            status=206,
+            content_type="application/pdf",
+        )
+        response["Content-Length"] = str(content_length)
+        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    else:
+        response = StreamingHttpResponse(
+            stream_protected_file(book),
+            content_type="application/pdf",
+        )
+        response["Content-Length"] = str(file_size)
+
     response["Content-Disposition"] = 'inline; filename="protected.pdf"'
-    response["Content-Length"] = str(book.pdf_file.size)
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
-    response["Accept-Ranges"] = "none"
+    response["Accept-Ranges"] = "bytes"
     response["X-Content-Type-Options"] = "nosniff"
     response["Content-Security-Policy"] = "frame-ancestors 'self'; default-src 'self'"
     return response

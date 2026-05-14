@@ -5,9 +5,31 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}PDF Books{% endblock %}</title>
+    <script>
+        (function () {
+            try {
+                var theme = localStorage.getItem("siteContrastTheme") || "default";
+                document.documentElement.dataset.contrastTheme = theme;
+            } catch (error) {
+                document.documentElement.dataset.contrastTheme = "default";
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="{% static 'library/style.css' %}">
 </head>
 <body>
+    {% block accessibility_controls %}
+        <div class="site-contrast-control">
+            <label for="site-contrast">Contrast</label>
+            <select id="site-contrast" data-contrast-select>
+                <option value="default">Default</option>
+                <option value="high">High</option>
+                <option value="dark">Dark</option>
+                <option value="sepia">Sepia</option>
+                <option value="soft">Soft</option>
+            </select>
+        </div>
+    {% endblock %}
     <main class="{% block main_class %}page{% endblock %}">
         {% if messages %}
             <div class="messages">
@@ -18,6 +40,7 @@
         {% endif %}
         {% block content %}{% endblock %}
     </main>
+    <script src="{% static 'library/site.js' %}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

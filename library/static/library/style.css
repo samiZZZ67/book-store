@@ -174,6 +174,58 @@ select {
     font: inherit;
 }
 
+.site-contrast-control {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    max-width: 1040px;
+    margin: 12px auto -18px;
+    padding: 0 16px;
+    font-size: 14px;
+}
+
+.site-contrast-control label {
+    margin: 0;
+    color: #526170;
+}
+
+.site-contrast-control select {
+    width: auto;
+}
+
+.form-progress {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0 8px;
+    color: #526170;
+    font-size: 14px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.form-progress progress {
+    width: 150px;
+    height: 8px;
+    accent-color: #0f6c81;
+}
+
+.form-progress-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #c7d0d9;
+    border-top-color: #0f6c81;
+    border-radius: 50%;
+    animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .small {
     font-size: 14px;
 }
@@ -472,6 +524,7 @@ th {
 .reader-app {
     display: flex;
     flex-direction: column;
+    height: calc(100vh - 32px);
     min-height: calc(100vh - 32px);
     overflow: hidden;
     border: 1px solid #cfd8e1;
@@ -548,18 +601,90 @@ th {
 .canvas-shell {
     position: relative;
     flex: 1 1 auto;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
     min-width: 0;
     overflow: auto;
     padding: 18px;
     background: #dfe5eb;
+    scroll-behavior: smooth;
 }
 
-.canvas-shell canvas {
+.pdf-pages {
+    --pdf-page-width: 760px;
+    --pdf-page-height: 980px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    min-height: 100%;
+}
+
+.pdf-page-shell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(100%, var(--pdf-page-width));
+    min-height: var(--pdf-page-height);
+    scroll-margin-top: 16px;
+}
+
+.pdf-page-label {
+    align-self: flex-start;
+    margin-bottom: 6px;
+    border: 1px solid #c7d0d9;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #526170;
+    padding: 3px 9px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.pdf-page-surface {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: calc(var(--pdf-page-height) - 28px);
+    border: 1px solid #c9d2dc;
+    background: #f8fafc;
+    box-shadow: 0 12px 28px rgba(28, 39, 49, 0.16);
+}
+
+.pdf-page-surface canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
     background: #fff;
     box-shadow: 0 12px 28px rgba(28, 39, 49, 0.22);
+}
+
+.pdf-page-loading {
+    color: #526170;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.pdf-page-shell.is-rendering .pdf-page-surface {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0)),
+        #eef2f5;
+    background-size: 220px 100%, 100% 100%;
+    animation: reader-sheen 1200ms ease-in-out infinite;
+}
+
+.pdf-page-shell.has-error .pdf-page-surface {
+    border-color: #d7a4a4;
+    background: #fff5f5;
+}
+
+@keyframes reader-sheen {
+    from {
+        background-position: -220px 0, 0 0;
+    }
+
+    to {
+        background-position: calc(100% + 220px) 0, 0 0;
+    }
 }
 
 .reader-loading {
@@ -575,14 +700,6 @@ th {
     color: #526170;
 }
 
-.reader-app[data-contrast="1"] .canvas-shell {
-    background: #000;
-}
-
-.reader-app[data-contrast="1"] canvas {
-    filter: contrast(1.35) brightness(1.04);
-}
-
 .reader-app:fullscreen {
     width: 100vw;
     height: 100vh;
@@ -591,7 +708,284 @@ th {
     border-radius: 0;
 }
 
+html[data-contrast-theme="high"] body {
+    background: #000;
+    color: #fff;
+}
+
+html[data-contrast-theme="high"] a {
+    color: #00e5ff;
+}
+
+html[data-contrast-theme="high"] .panel,
+html[data-contrast-theme="high"] .toolbar,
+html[data-contrast-theme="high"] .book-card,
+html[data-contrast-theme="high"] .empty-state,
+html[data-contrast-theme="high"] .message,
+html[data-contrast-theme="high"] .reader-app,
+html[data-contrast-theme="high"] .reader-header,
+html[data-contrast-theme="high"] .reader-toolbar,
+html[data-contrast-theme="high"] .pdf-page-label,
+html[data-contrast-theme="high"] .reader-loading {
+    border-color: #fff;
+    background: #000;
+    color: #fff;
+}
+
+html[data-contrast-theme="high"] input,
+html[data-contrast-theme="high"] select,
+html[data-contrast-theme="high"] .button,
+html[data-contrast-theme="high"] button {
+    border-color: #fff;
+    background: #000;
+    color: #fff;
+}
+
+html[data-contrast-theme="high"] .button-primary,
+html[data-contrast-theme="high"] button.is-active {
+    border-color: #fff;
+    background: #fff;
+    color: #000;
+}
+
+html[data-contrast-theme="high"] .small,
+html[data-contrast-theme="high"] .book-meta,
+html[data-contrast-theme="high"] .reader-progress,
+html[data-contrast-theme="high"] .reader-page-jump,
+html[data-contrast-theme="high"] .table-note,
+html[data-contrast-theme="high"] .site-contrast-control label,
+html[data-contrast-theme="high"] .pdf-page-loading,
+html[data-contrast-theme="high"] .form-progress {
+    color: #fff;
+}
+
+html[data-contrast-theme="high"] .canvas-shell,
+html[data-contrast-theme="high"] .pdf-page-surface {
+    border-color: #fff;
+    background: #000;
+}
+
+html[data-contrast-theme="high"] th,
+html[data-contrast-theme="high"] td {
+    border-color: #fff;
+    background: #000;
+    color: #fff;
+}
+
+html[data-contrast-theme="high"] .pdf-page-surface canvas {
+    filter: contrast(1.45) brightness(1.08);
+}
+
+html[data-contrast-theme="dark"] body {
+    background: #111827;
+    color: #e5e7eb;
+}
+
+html[data-contrast-theme="dark"] a {
+    color: #8bd5ff;
+}
+
+html[data-contrast-theme="dark"] .panel,
+html[data-contrast-theme="dark"] .toolbar,
+html[data-contrast-theme="dark"] .book-card,
+html[data-contrast-theme="dark"] .empty-state,
+html[data-contrast-theme="dark"] .message,
+html[data-contrast-theme="dark"] .reader-app,
+html[data-contrast-theme="dark"] .reader-header,
+html[data-contrast-theme="dark"] .reader-toolbar,
+html[data-contrast-theme="dark"] .pdf-page-label,
+html[data-contrast-theme="dark"] .reader-loading {
+    border-color: #4b5563;
+    background: #1f2937;
+    color: #e5e7eb;
+}
+
+html[data-contrast-theme="dark"] input,
+html[data-contrast-theme="dark"] select,
+html[data-contrast-theme="dark"] .button,
+html[data-contrast-theme="dark"] button {
+    border-color: #6b7280;
+    background: #111827;
+    color: #f9fafb;
+}
+
+html[data-contrast-theme="dark"] .button-primary,
+html[data-contrast-theme="dark"] button.is-active {
+    border-color: #7dd3fc;
+    background: #0f6c81;
+    color: #fff;
+}
+
+html[data-contrast-theme="dark"] .small,
+html[data-contrast-theme="dark"] .book-meta,
+html[data-contrast-theme="dark"] .reader-progress,
+html[data-contrast-theme="dark"] .reader-page-jump,
+html[data-contrast-theme="dark"] .table-note,
+html[data-contrast-theme="dark"] .site-contrast-control label,
+html[data-contrast-theme="dark"] .pdf-page-loading,
+html[data-contrast-theme="dark"] .form-progress {
+    color: #cbd5e1;
+}
+
+html[data-contrast-theme="dark"] .canvas-shell,
+html[data-contrast-theme="dark"] .pdf-page-surface {
+    border-color: #374151;
+    background: #0f172a;
+}
+
+html[data-contrast-theme="dark"] th,
+html[data-contrast-theme="dark"] td {
+    border-color: #4b5563;
+    background: #1f2937;
+    color: #e5e7eb;
+}
+
+html[data-contrast-theme="dark"] .pdf-page-surface canvas {
+    filter: invert(1) hue-rotate(180deg) contrast(1.08);
+}
+
+html[data-contrast-theme="sepia"] body {
+    background: #f2ead6;
+    color: #332718;
+}
+
+html[data-contrast-theme="sepia"] a {
+    color: #7b3f00;
+}
+
+html[data-contrast-theme="sepia"] .panel,
+html[data-contrast-theme="sepia"] .toolbar,
+html[data-contrast-theme="sepia"] .book-card,
+html[data-contrast-theme="sepia"] .empty-state,
+html[data-contrast-theme="sepia"] .message,
+html[data-contrast-theme="sepia"] .reader-app,
+html[data-contrast-theme="sepia"] .reader-header,
+html[data-contrast-theme="sepia"] .reader-toolbar,
+html[data-contrast-theme="sepia"] .pdf-page-label,
+html[data-contrast-theme="sepia"] .reader-loading {
+    border-color: #c8b78f;
+    background: #fff8e8;
+    color: #332718;
+}
+
+html[data-contrast-theme="sepia"] input,
+html[data-contrast-theme="sepia"] select,
+html[data-contrast-theme="sepia"] .button,
+html[data-contrast-theme="sepia"] button {
+    border-color: #ad966d;
+    background: #fffdf5;
+    color: #332718;
+}
+
+html[data-contrast-theme="sepia"] .button-primary,
+html[data-contrast-theme="sepia"] button.is-active {
+    border-color: #7b3f00;
+    background: #7b3f00;
+    color: #fff8e8;
+}
+
+html[data-contrast-theme="sepia"] .small,
+html[data-contrast-theme="sepia"] .book-meta,
+html[data-contrast-theme="sepia"] .reader-progress,
+html[data-contrast-theme="sepia"] .reader-page-jump,
+html[data-contrast-theme="sepia"] .table-note,
+html[data-contrast-theme="sepia"] .site-contrast-control label,
+html[data-contrast-theme="sepia"] .pdf-page-loading,
+html[data-contrast-theme="sepia"] .form-progress {
+    color: #5b4b34;
+}
+
+html[data-contrast-theme="sepia"] .canvas-shell,
+html[data-contrast-theme="sepia"] .pdf-page-surface {
+    border-color: #c8b78f;
+    background: #e6d6b8;
+}
+
+html[data-contrast-theme="sepia"] th,
+html[data-contrast-theme="sepia"] td {
+    border-color: #c8b78f;
+    background: #fff8e8;
+    color: #332718;
+}
+
+html[data-contrast-theme="sepia"] .pdf-page-surface canvas {
+    filter: sepia(0.5) contrast(1.04) brightness(0.98);
+}
+
+html[data-contrast-theme="soft"] body {
+    background: #f5fbf7;
+    color: #18312b;
+}
+
+html[data-contrast-theme="soft"] a {
+    color: #236b82;
+}
+
+html[data-contrast-theme="soft"] .panel,
+html[data-contrast-theme="soft"] .toolbar,
+html[data-contrast-theme="soft"] .book-card,
+html[data-contrast-theme="soft"] .empty-state,
+html[data-contrast-theme="soft"] .message,
+html[data-contrast-theme="soft"] .reader-app,
+html[data-contrast-theme="soft"] .reader-header,
+html[data-contrast-theme="soft"] .reader-toolbar,
+html[data-contrast-theme="soft"] .pdf-page-label,
+html[data-contrast-theme="soft"] .reader-loading {
+    border-color: #b9d4cc;
+    background: #ffffff;
+    color: #18312b;
+}
+
+html[data-contrast-theme="soft"] input,
+html[data-contrast-theme="soft"] select,
+html[data-contrast-theme="soft"] .button,
+html[data-contrast-theme="soft"] button {
+    border-color: #9fbeb6;
+    background: #ffffff;
+    color: #18312b;
+}
+
+html[data-contrast-theme="soft"] .button-primary,
+html[data-contrast-theme="soft"] button.is-active {
+    border-color: #236b82;
+    background: #236b82;
+    color: #fff;
+}
+
+html[data-contrast-theme="soft"] .small,
+html[data-contrast-theme="soft"] .book-meta,
+html[data-contrast-theme="soft"] .reader-progress,
+html[data-contrast-theme="soft"] .reader-page-jump,
+html[data-contrast-theme="soft"] .table-note,
+html[data-contrast-theme="soft"] .site-contrast-control label,
+html[data-contrast-theme="soft"] .pdf-page-loading,
+html[data-contrast-theme="soft"] .form-progress {
+    color: #3b5f58;
+}
+
+html[data-contrast-theme="soft"] .canvas-shell,
+html[data-contrast-theme="soft"] .pdf-page-surface {
+    border-color: #b9d4cc;
+    background: #dceee8;
+}
+
+html[data-contrast-theme="soft"] th,
+html[data-contrast-theme="soft"] td {
+    border-color: #b9d4cc;
+    background: #ffffff;
+    color: #18312b;
+}
+
+html[data-contrast-theme="soft"] .pdf-page-surface canvas {
+    filter: contrast(0.94) brightness(1.04);
+}
+
 @media (max-width: 640px) {
+    .site-contrast-control {
+        justify-content: flex-start;
+        margin-bottom: -12px;
+    }
+
     .toolbar,
     .book-card-main {
         align-items: stretch;
