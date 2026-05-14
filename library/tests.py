@@ -154,6 +154,30 @@ class BookAccessTests(TestCase):
         self.assertEqual(response.json()["redirect_url"], reverse("admin_dashboard"))
         self.assertTrue(PDFBook.objects.filter(title="Operating Systems").exists())
 
+    def test_admin_ajax_pdf_upload_returns_storage_error(self):
+        self.client.force_login(self.admin)
+
+        with patch(
+            "library.views.PDFBook.objects.create",
+            side_effect=Exception("Invalid Signature"),
+        ):
+            response = self.client.post(
+                reverse("upload_pdf"),
+                {
+                    "title": "Operating Systems",
+                    "pdf": SimpleUploadedFile(
+                        "operating-systems.pdf",
+                        b"%PDF-1.4\n% uploaded pdf\n",
+                        content_type="application/pdf",
+                    ),
+                },
+                HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("PDF upload failed", response.json()["error"])
+        self.assertIn("Invalid Signature", response.json()["error"])
+
     def test_pdf_stream_supports_byte_range_requests(self):
         AccessRequest.objects.create(
             user=self.user,

@@ -74,6 +74,22 @@
         }
     }
 
+    function responseErrorMessage(request) {
+        try {
+            var payload = JSON.parse(request.responseText);
+            if (payload.error) {
+                return payload.error;
+            }
+        } catch (error) {
+            // The server may return a regular Django error page.
+        }
+
+        if (request.status) {
+            return "Upload failed with server status " + request.status + ".";
+        }
+        return "Upload failed. Try again.";
+    }
+
     function setFormBusy(form, submitter, busy) {
         form.querySelectorAll("input, select, textarea, button").forEach(function (control) {
             if (control.type !== "hidden") {
@@ -131,7 +147,7 @@
                 return;
             }
 
-            setProgress(progress, "Upload failed. Try again.", 0);
+            setProgress(progress, responseErrorMessage(request), 0);
             restoreForm(form, submitter);
         });
 

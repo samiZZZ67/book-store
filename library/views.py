@@ -124,6 +124,20 @@ def redirect_or_json(request, view_name):
     return redirect(redirect_url)
 
 
+def storage_failure_response(request, action, exc):
+    logger.exception("%s failed while writing to storage: %s", action, exc)
+    message = (
+        f"{action} failed while saving to storage. Check your Cloudinary credentials "
+        "and run `python manage.py cloudinary_status --write-test` in Render Shell. "
+        f"Storage error: {exc}"
+    )
+    if wants_json_response(request):
+        return JsonResponse({"error": message}, status=500)
+
+    messages.error(request, message)
+    return redirect("admin_dashboard")
+
+
 def book_access_label(status, is_admin=False):
     if is_admin:
         return "Admin access"
@@ -632,14 +646,18 @@ def upload_pdf(request):
 
     uploaded_file.name = filename
     thumbnail_filename = thumbnail_file.name if thumbnail_file else ""
-    PDFBook.objects.create(
-        title=title[:150],
-        pdf_file=uploaded_file,
-        thumbnail=thumbnail_file,
-        original_filename=filename,
-        thumbnail_filename=thumbnail_filename,
-        uploaded_by=request.user,
-    )
+    try:
+        PDFBook.objects.create(
+            title=title[:150],
+            pdf_file=uploaded_file,
+            thumbnail=thumbnail_file,
+            original_filename=filename,
+            thumbnail_filename=thumbnail_filename,
+            uploaded_by=request.user,
+        )
+    except Exception as exc:
+        return storage_failure_response(request, "PDF upload", exc)
+
     messages.success(request, "PDF uploaded.")
     return redirect_or_json(request, "admin_dashboard")
 
@@ -663,18 +681,26 @@ def update_book_thumbnail(request, book_id):
         messages.error(request, thumbnail_error)
         return redirect_or_json(request, "admin_dashboard")
 
-    if book.thumbnail:
-        deleted, delete_error = delete_stored_file(book.thumbnail)
-        if not deleted:
+    old_thumbnail_name = book.thumbnail.name if book.thumbnail else ""
+    old_thumbnail_storage = book.thumbnail.storage if book.thumbnail else None
+    book.thumbnail = thumbnail_file
+    book.thumbnail_filename = thumbnail_file.name
+    try:
+        book.save(update_fields=["thumbnail", "thumbnail_filename", "updated_at"])
+    except Exception as exc:
+        return storage_failure_response(request, "Thumbnail upload", exc)
+
+    if old_thumbnail_name and old_thumbnail_storage:
+        try:
+            old_thumbnail_storage.delete(old_thumbnail_name)
+        except Exception as exc:
+            logger.warning("Could not delete previous thumbnail %s: %s", old_thumbnail_name, exc)
             messages.warning(
                 request,
                 "The old thumbnail was replaced, but the previous stored file could "
-                f"not be deleted: {delete_error}",
+                f"not be deleted: {old_thumbnail_name}: {exc}",
             )
 
-    book.thumbnail = thumbnail_file
-    book.thumbnail_filename = thumbnail_file.name
-    book.save(update_fields=["thumbnail", "thumbnail_filename", "updated_at"])
     messages.success(request, f"Thumbnail updated for {book.title}.")
     return redirect_or_json(request, "admin_dashboard")
 
