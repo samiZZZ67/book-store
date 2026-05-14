@@ -115,19 +115,29 @@ SITE_URL=https://your-service.onrender.com
 ```
 
 4. Keep `MEDIA_ROOT=/var/data/private_media` and the included persistent disk if you want uploaded PDFs to survive restarts and deploys. Render persistent disks require a paid web service; without one, uploaded files are not durable.
-5. After the first deploy, open the Render Shell and create an admin user:
+5. To create an admin without Render Shell, add these environment variables to the web service and redeploy:
+
+```text
+DJANGO_ADMIN_USERNAME=admin
+DJANGO_ADMIN_EMAIL=admin@example.com
+DJANGO_ADMIN_PASSWORD=change-this-password
+```
+
+The startup script creates or updates that admin after migrations run. After the admin is created, you may remove `DJANGO_ADMIN_PASSWORD` from Render and redeploy if you do not want the password stored there.
+
+6. If you have Render Shell, you can also create an admin manually:
 
 ```bash
 python manage.py create_admin --username admin --email admin@example.com --password change-this-password
 ```
 
-6. Register the Telegram webhook from the Render Shell:
+7. Register the Telegram webhook from the Render Shell:
 
 ```bash
 python manage.py set_telegram_webhook --base-url https://your-service.onrender.com
 ```
 
-7. Ask each configured Telegram admin to send `/start` to the bot. The dashboard will show their chat IDs after registration.
+8. Ask each configured Telegram admin to send `/start` to the bot. The dashboard will show their chat IDs after registration.
 
 ### Manual Render service settings
 
@@ -144,6 +154,7 @@ The start script runs:
 
 ```bash
 python manage.py migrate --noinput
+python manage.py create_admin ... # only when DJANGO_ADMIN_* env vars are set
 gunicorn pdfsite.wsgi:application --bind 0.0.0.0:${PORT:-8000}
 ```
 
