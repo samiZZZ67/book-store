@@ -223,3 +223,34 @@ class BookAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         telegram_admin = TelegramAdmin.objects.get(username="siteadmin")
         self.assertEqual(telegram_admin.chat_id, 987654)
+
+    @override_settings(
+        TELEGRAM_BOT_TOKEN="token",
+        TELEGRAM_WEBHOOK_SECRET="secret",
+        TELEGRAM_ADMIN_USERNAMES=[],
+    )
+    def test_admin_can_set_telegram_webhook_from_dashboard(self):
+        self.client.force_login(self.admin)
+
+        with patch("library.views.set_webhook", return_value={"ok": True}) as set_webhook:
+            response = self.client.post(reverse("setup_telegram_webhook"), secure=True)
+
+        self.assertRedirects(response, reverse("admin_dashboard"))
+        set_webhook.assert_called_once()
+        self.assertEqual(
+            set_webhook.call_args.args[0],
+            "https://testserver/telegram/webhook/secret/",
+        )
+
+    @override_settings(TELEGRAM_BOT_TOKEN="token", TELEGRAM_ADMIN_USERNAMES=[])
+    def test_admin_can_sync_pending_telegram_start_messages(self):
+        self.client.force_login(self.admin)
+
+        with patch(
+            "library.views.sync_pending_updates",
+            return_value={"ok": True, "processed": 1, "registered": 1, "error": None},
+        ) as sync_updates:
+            response = self.client.post(reverse("sync_telegram_updates"))
+
+        self.assertRedirects(response, reverse("admin_dashboard"))
+        sync_updates.assert_called_once()

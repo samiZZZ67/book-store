@@ -17,6 +17,10 @@ services:
         value: "1"
       - key: MEDIA_ROOT
         value: "/var/data/private_media"
+      - key: CLOUDINARY_URL
+        sync: false
+      - key: CLOUDINARY_STORAGE_PREFIX
+        value: "pdf-library"
       - key: TELEGRAM_WEBHOOK_SECRET
         generateValue: true
       - key: DATABASE_URL

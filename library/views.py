@@ -22,6 +22,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
+from .storage import cloudinary_file_response, cloudinary_range_response
 from .telegram import (
     configured_admin_usernames,
     is_valid_telegram_username,
@@ -29,7 +30,10 @@ from .telegram import (
     notify_access_request,
     register_admin_from_update,
     registered_telegram_admins,
+    set_webhook,
     sync_configured_admins,
+    sync_pending_updates,
+    webhook_url,
 )
 
 
@@ -311,6 +315,26 @@ def telegram_admin_list():
     ]
 
 
+def configure_telegram_webhook(request):
+    if not settings.TELEGRAM_BOT_TOKEN:
+        return False, "TELEGRAM_BOT_TOKEN is missing."
+    if not settings.TELEGRAM_WEBHOOK_SECRET:
+        return False, "TELEGRAM_WEBHOOK_SECRET is missing."
+
+    url = webhook_url(request)
+    if not url.startswith("https://"):
+        return (
+            False,
+            "Telegram requires a public HTTPS webhook URL. Deploy the site or set SITE_URL "
+            "to your HTTPS domain, then set the webhook.",
+        )
+
+    result = set_webhook(url)
+    if result and result.get("ok"):
+        return True, f"Telegram webhook set to {url}"
+    return False, f"Telegram rejected the webhook: {result}"
+
+
 def home(request):
     return render(
         request,
@@ -454,6 +478,7 @@ def admin_dashboard(request):
                 "telegram_webhook",
                 kwargs={"secret": settings.TELEGRAM_WEBHOOK_SECRET or "your-secret"},
             ),
+            "telegram_webhook_url": webhook_url(request),
             "max_telegram_admins": settings.MAX_TELEGRAM_ADMINS,
         },
     )
@@ -479,10 +504,47 @@ def add_telegram_admin(request):
         username=username,
         defaults={"is_active": True},
     )
+    webhook_ready, webhook_message = configure_telegram_webhook(request)
+    if webhook_ready:
+        messages.info(request, webhook_message)
+    elif settings.TELEGRAM_BOT_TOKEN:
+        messages.warning(request, webhook_message)
+
     messages.success(
         request,
         f"@{username} added. Ask this admin to send /start to the Telegram bot.",
     )
+    return redirect("admin_dashboard")
+
+
+@require_POST
+@admin_required
+def setup_telegram_webhook(request):
+    webhook_ready, webhook_message = configure_telegram_webhook(request)
+    if webhook_ready:
+        messages.success(request, webhook_message)
+    else:
+        messages.error(request, webhook_message)
+    return redirect("admin_dashboard")
+
+
+@require_POST
+@admin_required
+def sync_telegram_updates(request):
+    result = sync_pending_updates()
+    if result["ok"]:
+        messages.success(
+            request,
+            "Processed "
+            f"{result['processed']} Telegram update(s), registered "
+            f"{result['registered']} chat ID(s).",
+        )
+    else:
+        messages.error(
+            request,
+            "Could not read Telegram updates. If a webhook is active, send /start again "
+            f"after setting the webhook. Telegram response: {result['error']}",
+        )
     return redirect("admin_dashboard")
 
 
@@ -753,6 +815,17 @@ def stream_protected_file(book, start=0, length=None):
         file_handle.close()
 
 
+def stream_remote_file(remote_response):
+    try:
+        while True:
+            chunk = remote_response.read(PDF_STREAM_CHUNK_SIZE)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        remote_response.close()
+
+
 @never_cache
 @login_required
 def pdf_stream(request, book_id):
@@ -773,19 +846,52 @@ def pdf_stream(request, book_id):
     elif byte_range:
         start, end = byte_range
         content_length = end - start + 1
-        response = StreamingHttpResponse(
-            stream_protected_file(book, start=start, length=content_length),
-            status=206,
-            content_type="application/pdf",
-        )
-        response["Content-Length"] = str(content_length)
-        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        if settings.USE_CLOUDINARY_STORAGE:
+            remote_response, remote_headers = cloudinary_range_response(
+                book.pdf_file.name,
+                start,
+                end,
+            )
+            if remote_response is None:
+                response = HttpResponse(status=416)
+                response["Content-Range"] = f"bytes */{file_size}"
+                response["Content-Length"] = "0"
+            else:
+                response = StreamingHttpResponse(
+                    stream_remote_file(remote_response),
+                    status=206,
+                    content_type="application/pdf",
+                )
+                response["Content-Length"] = remote_headers.get(
+                    "Content-Length",
+                    str(content_length),
+                )
+                response["Content-Range"] = remote_headers.get(
+                    "Content-Range",
+                    f"bytes {start}-{end}/{file_size}",
+                )
+        else:
+            response = StreamingHttpResponse(
+                stream_protected_file(book, start=start, length=content_length),
+                status=206,
+                content_type="application/pdf",
+            )
+            response["Content-Length"] = str(content_length)
+            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
     else:
-        response = StreamingHttpResponse(
-            stream_protected_file(book),
-            content_type="application/pdf",
-        )
-        response["Content-Length"] = str(file_size)
+        if settings.USE_CLOUDINARY_STORAGE:
+            remote_response, remote_headers = cloudinary_file_response(book.pdf_file.name)
+            response = StreamingHttpResponse(
+                stream_remote_file(remote_response),
+                content_type="application/pdf",
+            )
+            response["Content-Length"] = remote_headers.get("Content-Length", str(file_size))
+        else:
+            response = StreamingHttpResponse(
+                stream_protected_file(book),
+                content_type="application/pdf",
+            )
+            response["Content-Length"] = str(file_size)
 
     response["Content-Disposition"] = 'inline; filename="protected.pdf"'
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"

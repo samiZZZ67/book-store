@@ -25,6 +25,16 @@ urlpatterns = [
         name="add_telegram_admin",
     ),
     path(
+        "site-admin/telegram-webhook/setup/",
+        views.setup_telegram_webhook,
+        name="setup_telegram_webhook",
+    ),
+    path(
+        "site-admin/telegram-updates/sync/",
+        views.sync_telegram_updates,
+        name="sync_telegram_updates",
+    ),
+    path(
         "site-admin/telegram-admins/<str:admin_id>/remove/",
         views.remove_telegram_admin,
         name="remove_telegram_admin",

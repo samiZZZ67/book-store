@@ -1,10 +1,8 @@
-import json
-
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.urls import reverse
 
-from library.telegram import telegram_api_call
+from library.telegram import set_webhook
 
 
 class Command(BaseCommand):
@@ -23,19 +21,13 @@ class Command(BaseCommand):
         if not base_url:
             raise CommandError("Set SITE_URL or pass --base-url.")
 
-        webhook_url = base_url + reverse(
+        url = base_url + reverse(
             "telegram_webhook",
             kwargs={"secret": settings.TELEGRAM_WEBHOOK_SECRET},
         )
-        result = telegram_api_call(
-            "setWebhook",
-            {
-                "url": webhook_url,
-                "allowed_updates": json.dumps(["message", "edited_message"]),
-            },
-        )
+        result = set_webhook(url)
 
         if not result or not result.get("ok"):
             raise CommandError(f"Telegram rejected the webhook: {result}")
 
-        self.stdout.write(self.style.SUCCESS(f"Telegram webhook set: {webhook_url}"))
+        self.stdout.write(self.style.SUCCESS(f"Telegram webhook set: {url}"))

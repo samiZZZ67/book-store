@@ -60,6 +60,32 @@ def telegram_api_call(method, payload=None):
         return None
 
 
+def webhook_url(request=None):
+    path = reverse(
+        "telegram_webhook",
+        kwargs={"secret": settings.TELEGRAM_WEBHOOK_SECRET or "your-secret"},
+    )
+    if request:
+        return request.build_absolute_uri(path)
+    if settings.SITE_URL:
+        return settings.SITE_URL.rstrip("/") + path
+    return ""
+
+
+def set_webhook(url):
+    return telegram_api_call(
+        "setWebhook",
+        {
+            "url": url,
+            "allowed_updates": json.dumps(["message", "edited_message"]),
+        },
+    )
+
+
+def webhook_info():
+    return telegram_api_call("getWebhookInfo")
+
+
 def send_telegram_message(chat_id, text):
     return telegram_api_call(
         "sendMessage",
@@ -117,6 +143,41 @@ def register_admin_from_update(update):
         "Telegram notifications are connected for this PDF library.",
     )
     return True
+
+
+def sync_pending_updates():
+    result = telegram_api_call(
+        "getUpdates",
+        {
+            "timeout": "0",
+            "allowed_updates": json.dumps(["message", "edited_message"]),
+        },
+    )
+    if not result or not result.get("ok"):
+        return {
+            "ok": False,
+            "processed": 0,
+            "registered": 0,
+            "error": result,
+        }
+
+    updates = result.get("result", [])
+    registered = 0
+    max_update_id = None
+    for update in updates:
+        if register_admin_from_update(update):
+            registered += 1
+        max_update_id = update.get("update_id", max_update_id)
+
+    if max_update_id is not None:
+        telegram_api_call("getUpdates", {"offset": str(max_update_id + 1), "timeout": "0"})
+
+    return {
+        "ok": True,
+        "processed": len(updates),
+        "registered": registered,
+        "error": None,
+    }
 
 
 def admin_dashboard_url(request=None):

@@ -45,6 +45,18 @@
         {% endif %}
     </p>
     <p class="small">Webhook path: {{ telegram_webhook_path }}</p>
+    <p class="small">Webhook URL: {{ telegram_webhook_url }}</p>
+
+    <div class="actions">
+        <form class="inline" method="post" action="{% url 'setup_telegram_webhook' %}">
+            {% csrf_token %}
+            <button class="button-compact" type="submit">Set Telegram Webhook</button>
+        </form>
+        <form class="inline" method="post" action="{% url 'sync_telegram_updates' %}">
+            {% csrf_token %}
+            <button class="button-compact" type="submit">Sync /start Messages</button>
+        </form>
+    </div>
 
     <form class="telegram-admin-form" method="post" action="{% url 'add_telegram_admin' %}">
         {% csrf_token %}
