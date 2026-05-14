@@ -182,6 +182,18 @@ class BookAccessTests(TestCase):
             f"bytes 0-3/{self.book.pdf_file.size}",
         )
 
+    def test_delete_book_does_not_crash_when_storage_cleanup_fails(self):
+        self.client.force_login(self.admin)
+
+        with patch(
+            "library.views.delete_stored_file",
+            return_value=(False, "Invalid Signature"),
+        ):
+            response = self.client.post(reverse("delete_book", args=[self.book.id]))
+
+        self.assertRedirects(response, reverse("admin_dashboard"))
+        self.assertFalse(PDFBook.objects.filter(id=self.book.id).exists())
+
     @override_settings(TELEGRAM_BOT_TOKEN="token", TELEGRAM_ADMIN_USERNAMES=[])
     def test_book_request_sends_telegram_notification(self):
         TelegramAdmin.objects.create(username="siteadmin", chat_id=123456)

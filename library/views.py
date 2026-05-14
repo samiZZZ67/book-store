@@ -1,6 +1,7 @@
 import secrets
 import json
 import mimetypes
+import logging
 from io import BytesIO
 from datetime import timedelta
 from functools import wraps
@@ -37,6 +38,7 @@ from .telegram import (
 )
 
 
+logger = logging.getLogger(__name__)
 PDF_TOKEN_MINUTES = 10
 PDF_STREAM_CHUNK_SIZE = 64 * 1024
 UNSATISFIABLE_RANGE = object()
@@ -206,6 +208,20 @@ def resized_thumbnail(uploaded_file):
 
     base_name = get_valid_filename(uploaded_file.name).rsplit(".", 1)[0] or "thumbnail"
     return ContentFile(output.getvalue(), name=f"{base_name}.jpg"), ""
+
+
+def delete_stored_file(file_field):
+    if not file_field:
+        return True, ""
+
+    name = file_field.name
+    try:
+        file_field.delete(save=False)
+    except Exception as exc:
+        logger.warning("Could not delete stored file %s: %s", name, exc)
+        return False, f"{name}: {exc}"
+
+    return True, ""
 
 
 def book_status_map(user, books):
@@ -648,7 +664,13 @@ def update_book_thumbnail(request, book_id):
         return redirect_or_json(request, "admin_dashboard")
 
     if book.thumbnail:
-        book.thumbnail.delete(save=False)
+        deleted, delete_error = delete_stored_file(book.thumbnail)
+        if not deleted:
+            messages.warning(
+                request,
+                "The old thumbnail was replaced, but the previous stored file could "
+                f"not be deleted: {delete_error}",
+            )
 
     book.thumbnail = thumbnail_file
     book.thumbnail_filename = thumbnail_file.name
@@ -662,7 +684,13 @@ def update_book_thumbnail(request, book_id):
 def remove_book_thumbnail(request, book_id):
     book = get_object_or_404(PDFBook, pk=book_id)
     if book.thumbnail:
-        book.thumbnail.delete(save=False)
+        deleted, delete_error = delete_stored_file(book.thumbnail)
+        if not deleted:
+            messages.warning(
+                request,
+                "Thumbnail was removed from the library, but the stored file could "
+                f"not be deleted: {delete_error}",
+            )
     book.thumbnail = None
     book.thumbnail_filename = ""
     book.save(update_fields=["thumbnail", "thumbnail_filename", "updated_at"])
@@ -696,11 +724,26 @@ def decide_request(request, request_id, decision):
 @admin_required
 def delete_book(request, book_id):
     book = get_object_or_404(PDFBook, pk=book_id)
-    book.pdf_file.delete(save=False)
+    cleanup_errors = []
+
+    deleted, delete_error = delete_stored_file(book.pdf_file)
+    if not deleted:
+        cleanup_errors.append(delete_error)
+
     if book.thumbnail:
-        book.thumbnail.delete(save=False)
+        deleted, delete_error = delete_stored_file(book.thumbnail)
+        if not deleted:
+            cleanup_errors.append(delete_error)
+
     book.delete()
-    messages.success(request, "PDF deleted.")
+    if cleanup_errors:
+        messages.warning(
+            request,
+            "PDF deleted from the library, but Cloudinary/file cleanup failed. "
+            "Check storage credentials. Details: " + " | ".join(cleanup_errors[:2]),
+        )
+    else:
+        messages.success(request, "PDF deleted.")
     return redirect("admin_dashboard")
 
 

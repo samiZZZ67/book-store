@@ -107,21 +107,21 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "private_media"))
 MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
+CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
 cloudinary_storage_flag = os.environ.get("USE_CLOUDINARY_STORAGE", "")
 USE_CLOUDINARY_STORAGE = cloudinary_storage_flag == "1" or (
-    not cloudinary_storage_flag and bool(os.environ.get("CLOUDINARY_URL"))
+    not cloudinary_storage_flag and bool(CLOUDINARY_URL)
 )
 CLOUDINARY_STORAGE_PREFIX = os.environ.get("CLOUDINARY_STORAGE_PREFIX", "pdf-library")
 CLOUDINARY_DOWNLOAD_TIMEOUT = int(os.environ.get("CLOUDINARY_DOWNLOAD_TIMEOUT", "20"))
 if USE_CLOUDINARY_STORAGE:
-    cloudinary_url = os.environ.get("CLOUDINARY_URL")
     cloudinary_parts = {
         "CLOUD_NAME": os.environ.get("CLOUDINARY_CLOUD_NAME", ""),
         "API_KEY": os.environ.get("CLOUDINARY_API_KEY", ""),
         "API_SECRET": os.environ.get("CLOUDINARY_API_SECRET", ""),
         "SECURE": True,
     }
-    if not cloudinary_url and not all(
+    if not CLOUDINARY_URL and not all(
         cloudinary_parts[key] for key in ("CLOUD_NAME", "API_KEY", "API_SECRET")
     ):
         raise ImproperlyConfigured(
@@ -135,8 +135,8 @@ if USE_CLOUDINARY_STORAGE:
             "Cloudinary storage is enabled, but the cloudinary package is not installed."
         ) from exc
 
-    if cloudinary_url:
-        parsed_cloudinary_url = urlparse(cloudinary_url)
+    if CLOUDINARY_URL:
+        parsed_cloudinary_url = urlparse(CLOUDINARY_URL)
         if not (
             parsed_cloudinary_url.hostname
             and parsed_cloudinary_url.username
