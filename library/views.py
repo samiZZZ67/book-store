@@ -374,6 +374,16 @@ def configure_telegram_webhook(request):
     return False, f"Telegram rejected the webhook: {result}"
 
 
+def pdf_stream_url(request, book):
+    token = secrets.token_urlsafe(32)
+    expires_at = timezone.now() + timedelta(minutes=PDF_TOKEN_MINUTES)
+    tokens = request.session.get("pdf_tokens", {})
+    tokens[str(book.id)] = {"token": token, "expires": expires_at.timestamp()}
+    request.session["pdf_tokens"] = tokens
+    request.session.modified = True
+    return reverse("pdf_stream", kwargs={"book_id": str(book.id)}) + f"?token={token}"
+
+
 def home(request):
     return render(
         request,
@@ -816,17 +826,7 @@ def viewer(request, book_id):
         messages.error(request, "Access approval is required to read this book.")
         return redirect("request_access")
 
-    token = secrets.token_urlsafe(32)
-    expires_at = timezone.now() + timedelta(minutes=PDF_TOKEN_MINUTES)
-    tokens = request.session.get("pdf_tokens", {})
-    tokens[str(book.id)] = {"token": token, "expires": expires_at.timestamp()}
-    request.session["pdf_tokens"] = tokens
-    request.session.modified = True
-
-    stream_url = (
-        reverse("pdf_stream", kwargs={"book_id": str(book.id)})
-        + f"?token={token}#toolbar=0&navpanes=0&scrollbar=1"
-    )
+    stream_url = pdf_stream_url(request, book) + "#toolbar=0&navpanes=0&scrollbar=1"
     return render(
         request,
         "library/viewer.html",
@@ -836,6 +836,13 @@ def viewer(request, book_id):
             "stream_url": stream_url,
         },
     )
+
+
+@never_cache
+@admin_required
+def open_pdf(request, book_id):
+    book = get_object_or_404(PDFBook, pk=book_id)
+    return redirect(pdf_stream_url(request, book))
 
 
 def valid_pdf_token(request, book_id):

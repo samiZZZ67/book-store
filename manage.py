@@ -4,7 +4,7 @@ import sys
 
 def default_environment():
     return os.environ.get("DJANGO_ENV") or (
-        "production" if os.environ.get("WEBSITE_HOSTNAME") else "development"
+        "production" if os.environ.get("DJANGO_DEBUG") == "0" else "development"
     )
 
 

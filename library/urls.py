@@ -15,6 +15,7 @@ urlpatterns = [
         name="request_book_access",
     ),
     path("books/<str:book_id>/thumbnail/", views.book_thumbnail, name="book_thumbnail"),
+    path("books/<str:book_id>/open/", views.open_pdf, name="open_pdf"),
     path("books/<str:book_id>/", views.viewer, name="viewer"),
     path("books/<str:book_id>/file/", views.pdf_stream, name="pdf_stream"),
     path("site-admin/", views.admin_dashboard, name="admin_dashboard"),

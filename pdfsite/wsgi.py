@@ -2,7 +2,7 @@ import os
 from django.core.wsgi import get_wsgi_application
 
 env = os.environ.get("DJANGO_ENV") or (
-    "production" if os.environ.get("WEBSITE_HOSTNAME") else "development"
+    "production" if os.environ.get("DJANGO_DEBUG") == "0" else "development"
 )
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", f"pdfsite.settings.{env}")
 

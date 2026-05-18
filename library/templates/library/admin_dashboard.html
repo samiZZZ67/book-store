@@ -74,7 +74,7 @@
                     <th>Username</th>
                     <th>Chat ID</th>
                     <th>Registered</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -124,7 +124,7 @@
                     <th>Email</th>
                     <th>Book</th>
                     <th>Status</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -167,7 +167,7 @@
                     <th>Title</th>
                     <th>File</th>
                     <th>Thumbnail</th>
-                    <th>Action</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -203,6 +203,7 @@
                             {% endif %}
                         </td>
                         <td>
+                            <a class="button button-compact" href="{% url 'open_pdf' book.id %}" target="_blank" rel="noopener">Open</a>
                             <form class="inline" method="post" action="{% url 'delete_book' book.id %}">
                                 {% csrf_token %}
                                 <button class="button-compact button-danger" type="submit">Delete</button>

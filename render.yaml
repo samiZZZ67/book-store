@@ -5,6 +5,8 @@ services:
     buildCommand: bash build.sh
     startCommand: bash start.sh
     envVars:
+      - key: DJANGO_ENV
+        value: production
       - key: DJANGO_DEBUG
         value: "0"
       - key: DJANGO_SECRET_KEY

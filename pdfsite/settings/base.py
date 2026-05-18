@@ -1,5 +1,4 @@
 import os
-import shlex
 from importlib.util import find_spec
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -8,10 +7,9 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-IS_AZURE_APP_SERVICE = bool(os.environ.get("WEBSITE_HOSTNAME"))
 CURRENT_ENV = (
     os.environ.get("DJANGO_ENV")
-    or ("production" if IS_AZURE_APP_SERVICE else "development")
+    or ("production" if os.environ.get("DJANGO_DEBUG") == "0" else "development")
 ).lower()
 SETTINGS_MODULE = os.environ.get("DJANGO_SETTINGS_MODULE", "")
 IS_PRODUCTION = CURRENT_ENV == "production" or SETTINGS_MODULE.endswith(".production")
@@ -106,89 +104,7 @@ def postgres_database_config(name, user, password, host, port="5432", sslmode="r
     return config
 
 
-def normalized_connection_parts(parts):
-    return {
-        key.strip().lower().replace(" ", "").replace("_", ""): value.strip()
-        for key, value in parts.items()
-        if value is not None and str(value).strip()
-    }
-
-
-def sslmode_from_value(value, default="require"):
-    if not value:
-        return default
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on", "require", "required"}:
-        return "require"
-    if normalized in {"0", "false", "no", "off", "disable", "disabled"}:
-        return "disable"
-    return value.strip()
-
-
-def azure_postgres_config_from_parts(parts):
-    values = normalized_connection_parts(parts)
-    name = values.get("dbname") or values.get("database") or values.get("name")
-    user = values.get("user") or values.get("userid") or values.get("username")
-    password = values.get("password")
-    host = values.get("host") or values.get("server")
-
-    if not all([name, user, password, host]):
-        return None
-
-    sslmode = sslmode_from_value(values.get("sslmode") or values.get("ssl"), "require")
-    return postgres_database_config(
-        name=name,
-        user=user,
-        password=password,
-        host=host,
-        port=values.get("port", "5432"),
-        sslmode=sslmode,
-    )
-
-
-def azure_postgres_config_from_connection_string(connection_string):
-    if not connection_string or "=" not in connection_string:
-        return None
-
-    parts = {}
-    if ";" in connection_string:
-        raw_parts = connection_string.split(";")
-    else:
-        raw_parts = shlex.split(connection_string)
-
-    for item in raw_parts:
-        if "=" not in item:
-            continue
-        key, value = item.split("=", 1)
-        parts[key] = value
-
-    return azure_postgres_config_from_parts(parts)
-
-
-def azure_postgres_config_from_env():
-    config = azure_postgres_config_from_parts(
-        {
-            "host": os.environ.get("AZURE_POSTGRESQL_HOST"),
-            "name": (
-                os.environ.get("AZURE_POSTGRESQL_NAME")
-                or os.environ.get("AZURE_POSTGRESQL_DATABASE")
-            ),
-            "user": (
-                os.environ.get("AZURE_POSTGRESQL_USER")
-                or os.environ.get("AZURE_POSTGRESQL_USERNAME")
-            ),
-            "password": os.environ.get("AZURE_POSTGRESQL_PASSWORD"),
-            "port": os.environ.get("AZURE_POSTGRESQL_PORT", "5432"),
-            "ssl": os.environ.get("AZURE_POSTGRESQL_SSL", "true"),
-        }
-    )
-    return config or azure_postgres_config_from_connection_string(
-        os.environ.get("AZURE_POSTGRESQL_CONNECTIONSTRING", "")
-    )
-
-
 DATABASE_URL = os.environ.get("DATABASE_URL")
-AZURE_POSTGRES_CONFIG = azure_postgres_config_from_env()
 
 if DATABASE_URL:
     import dj_database_url
@@ -200,8 +116,6 @@ if DATABASE_URL:
             ssl_require=os.environ.get("DB_SSL_REQUIRE", "1") == "1",
         )
     }
-elif AZURE_POSTGRES_CONFIG:
-    DATABASES = {"default": AZURE_POSTGRES_CONFIG}
 elif os.environ.get("DB_ENGINE") == "postgresql":
     DATABASES = {
         "default": {
@@ -222,8 +136,7 @@ elif DEBUG or env_bool("ALLOW_SQLITE_IN_PRODUCTION", False):
     }
 else:
     raise ImproperlyConfigured(
-        "A production database is required. Set DATABASE_URL, set the Azure "
-        "AZURE_POSTGRESQL_* variables from Service Connector, or explicitly set "
+        "A production database is required. Set DATABASE_URL, or explicitly set "
         "ALLOW_SQLITE_IN_PRODUCTION=1 for a temporary test deployment."
     )
 
@@ -234,12 +147,7 @@ USE_TZ = True
 
 STATIC_URL = os.environ.get("STATIC_URL", "/static/")
 STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))
-DEFAULT_MEDIA_ROOT = (
-    Path(os.environ["HOME"]) / "site" / "media"
-    if IS_AZURE_APP_SERVICE and os.environ.get("HOME")
-    else BASE_DIR / "private_media"
-)
-MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", DEFAULT_MEDIA_ROOT))
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "private_media"))
 MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
 CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
 cloudinary_storage_flag = os.environ.get("USE_CLOUDINARY_STORAGE", "")

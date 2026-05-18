@@ -23,6 +23,9 @@
                 <div class="book-card-actions">
                     {% if book.can_read %}
                         <a class="button button-primary" href="{% url 'viewer' book.id %}">Read</a>
+                        {% if current_user.is_admin %}
+                            <a class="button" href="{% url 'open_pdf' book.id %}" target="_blank" rel="noopener">Open</a>
+                        {% endif %}
                     {% elif book.can_request %}
                         <form class="inline" method="post" action="{% url 'request_book_access' book.id %}">
                             {% csrf_token %}

@@ -2,7 +2,10 @@
 from .base import *
 
 DEBUG = True
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", "0.0.0.0", "::1"]
+ALLOWED_HOSTS = env_list(
+    "DJANGO_ALLOWED_HOSTS",
+    "127.0.0.1,localhost,0.0.0.0,::1",
+)
 
 # Optional: Use SQLite as default if DATABASE_URL is not set
 if not DATABASE_URL and not os.environ.get("DB_ENGINE"):

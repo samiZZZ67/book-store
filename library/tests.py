@@ -2,6 +2,7 @@ import json
 import tempfile
 from io import BytesIO
 from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -100,6 +101,35 @@ class BookAccessTests(TestCase):
             {"token": token_data["token"]},
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_admin_can_open_pdf_in_browser_viewer(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("open_pdf", args=[self.book.id]))
+
+        self.assertEqual(response.status_code, 302)
+        redirect_url = urlparse(response["Location"])
+        self.assertEqual(redirect_url.path, reverse("pdf_stream", args=[self.book.id]))
+        token = parse_qs(redirect_url.query).get("token", [""])[0]
+        self.assertTrue(token)
+        self.assertEqual(
+            self.client.session["pdf_tokens"][str(self.book.id)]["token"],
+            token,
+        )
+
+    def test_approved_user_cannot_open_pdf_in_browser_viewer(self):
+        AccessRequest.objects.create(
+            user=self.user,
+            book=self.book,
+            status=AccessRequest.STATUS_APPROVED,
+            decided_by=self.admin,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("open_pdf", args=[self.book.id]))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("pdf_tokens", self.client.session)
 
     def test_book_approval_does_not_apply_to_other_books(self):
         other_book = self.create_book("Python Basics", "python.pdf")

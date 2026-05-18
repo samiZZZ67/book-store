@@ -17,7 +17,7 @@ def host_from_url(url):
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "")
 for host in (
-    os.environ.get("WEBSITE_HOSTNAME"),
+    ".onrender.com",
     os.environ.get("RENDER_EXTERNAL_HOSTNAME"),
     host_from_url(SITE_URL),
 ):
@@ -37,6 +37,7 @@ SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+append_unique(CSRF_TRUSTED_ORIGINS, "https://*.onrender.com")
 for host in ALLOWED_HOSTS:
     if host == "*":
         continue
