@@ -1,23 +1,52 @@
 import os
+import shlex
 from importlib.util import find_spec
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+IS_AZURE_APP_SERVICE = bool(os.environ.get("WEBSITE_HOSTNAME"))
+CURRENT_ENV = (
+    os.environ.get("DJANGO_ENV")
+    or ("production" if IS_AZURE_APP_SERVICE else "development")
+).lower()
+SETTINGS_MODULE = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+IS_PRODUCTION = CURRENT_ENV == "production" or SETTINGS_MODULE.endswith(".production")
+
+
+def env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def env_list(name, default=""):
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-this-secret")
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
-if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
-    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
+def env_optional_int(name, default=None):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    value = value.strip().lower()
+    if value in {"", "0", "none", "unlimited"}:
+        return None
+    return int(value)
+
+
+DEBUG = False if IS_PRODUCTION else env_bool("DJANGO_DEBUG", True)
+
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "dev-only-change-this-secret"
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY is required in production.")
+
 SITE_URL = os.environ.get("SITE_URL", "")
 HAS_WHITENOISE = find_spec("whitenoise") is not None
 
@@ -62,7 +91,104 @@ TEMPLATES = [
 WSGI_APPLICATION = "pdfsite.wsgi.application"
 ASGI_APPLICATION = "pdfsite.asgi.application"
 
+
+def postgres_database_config(name, user, password, host, port="5432", sslmode="require"):
+    config = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": name,
+        "USER": user,
+        "PASSWORD": password,
+        "HOST": host,
+        "PORT": port or "5432",
+    }
+    if sslmode:
+        config["OPTIONS"] = {"sslmode": sslmode}
+    return config
+
+
+def normalized_connection_parts(parts):
+    return {
+        key.strip().lower().replace(" ", "").replace("_", ""): value.strip()
+        for key, value in parts.items()
+        if value is not None and str(value).strip()
+    }
+
+
+def sslmode_from_value(value, default="require"):
+    if not value:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on", "require", "required"}:
+        return "require"
+    if normalized in {"0", "false", "no", "off", "disable", "disabled"}:
+        return "disable"
+    return value.strip()
+
+
+def azure_postgres_config_from_parts(parts):
+    values = normalized_connection_parts(parts)
+    name = values.get("dbname") or values.get("database") or values.get("name")
+    user = values.get("user") or values.get("userid") or values.get("username")
+    password = values.get("password")
+    host = values.get("host") or values.get("server")
+
+    if not all([name, user, password, host]):
+        return None
+
+    sslmode = sslmode_from_value(values.get("sslmode") or values.get("ssl"), "require")
+    return postgres_database_config(
+        name=name,
+        user=user,
+        password=password,
+        host=host,
+        port=values.get("port", "5432"),
+        sslmode=sslmode,
+    )
+
+
+def azure_postgres_config_from_connection_string(connection_string):
+    if not connection_string or "=" not in connection_string:
+        return None
+
+    parts = {}
+    if ";" in connection_string:
+        raw_parts = connection_string.split(";")
+    else:
+        raw_parts = shlex.split(connection_string)
+
+    for item in raw_parts:
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        parts[key] = value
+
+    return azure_postgres_config_from_parts(parts)
+
+
+def azure_postgres_config_from_env():
+    config = azure_postgres_config_from_parts(
+        {
+            "host": os.environ.get("AZURE_POSTGRESQL_HOST"),
+            "name": (
+                os.environ.get("AZURE_POSTGRESQL_NAME")
+                or os.environ.get("AZURE_POSTGRESQL_DATABASE")
+            ),
+            "user": (
+                os.environ.get("AZURE_POSTGRESQL_USER")
+                or os.environ.get("AZURE_POSTGRESQL_USERNAME")
+            ),
+            "password": os.environ.get("AZURE_POSTGRESQL_PASSWORD"),
+            "port": os.environ.get("AZURE_POSTGRESQL_PORT", "5432"),
+            "ssl": os.environ.get("AZURE_POSTGRESQL_SSL", "true"),
+        }
+    )
+    return config or azure_postgres_config_from_connection_string(
+        os.environ.get("AZURE_POSTGRESQL_CONNECTIONSTRING", "")
+    )
+
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
+AZURE_POSTGRES_CONFIG = azure_postgres_config_from_env()
 
 if DATABASE_URL:
     import dj_database_url
@@ -74,6 +200,8 @@ if DATABASE_URL:
             ssl_require=os.environ.get("DB_SSL_REQUIRE", "1") == "1",
         )
     }
+elif AZURE_POSTGRES_CONFIG:
+    DATABASES = {"default": AZURE_POSTGRES_CONFIG}
 elif os.environ.get("DB_ENGINE") == "postgresql":
     DATABASES = {
         "default": {
@@ -85,7 +213,7 @@ elif os.environ.get("DB_ENGINE") == "postgresql":
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         }
     }
-elif DEBUG or os.environ.get("ALLOW_SQLITE_IN_PRODUCTION") == "1":
+elif DEBUG or env_bool("ALLOW_SQLITE_IN_PRODUCTION", False):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -94,8 +222,9 @@ elif DEBUG or os.environ.get("ALLOW_SQLITE_IN_PRODUCTION") == "1":
     }
 else:
     raise ImproperlyConfigured(
-        "DATABASE_URL is required when DJANGO_DEBUG=0. Add your Render PostgreSQL "
-        "Internal Database URL to the web service environment variables."
+        "A production database is required. Set DATABASE_URL, set the Azure "
+        "AZURE_POSTGRESQL_* variables from Service Connector, or explicitly set "
+        "ALLOW_SQLITE_IN_PRODUCTION=1 for a temporary test deployment."
     )
 
 LANGUAGE_CODE = "en-us"
@@ -103,9 +232,14 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "private_media"))
+STATIC_URL = os.environ.get("STATIC_URL", "/static/")
+STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))
+DEFAULT_MEDIA_ROOT = (
+    Path(os.environ["HOME"]) / "site" / "media"
+    if IS_AZURE_APP_SERVICE and os.environ.get("HOME")
+    else BASE_DIR / "private_media"
+)
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", DEFAULT_MEDIA_ROOT))
 MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
 CLOUDINARY_URL = os.environ.get("CLOUDINARY_URL", "")
 cloudinary_storage_flag = os.environ.get("USE_CLOUDINARY_STORAGE", "")
@@ -115,6 +249,7 @@ USE_CLOUDINARY_STORAGE = cloudinary_storage_flag == "1" or (
 CLOUDINARY_STORAGE_PREFIX = os.environ.get("CLOUDINARY_STORAGE_PREFIX", "pdf-library")
 CLOUDINARY_DOWNLOAD_TIMEOUT = int(os.environ.get("CLOUDINARY_DOWNLOAD_TIMEOUT", "20"))
 CLOUDINARY_UPLOAD_CHUNK_SIZE = int(os.environ.get("CLOUDINARY_UPLOAD_CHUNK_SIZE", str(6 * 1024 * 1024)))
+
 if USE_CLOUDINARY_STORAGE:
     cloudinary_parts = {
         "CLOUD_NAME": os.environ.get("CLOUDINARY_CLOUD_NAME", ""),
@@ -185,18 +320,20 @@ LOGIN_URL = "login"
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "1" if not DEBUG else "0") == "1"
-SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0"))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("SECURE_HSTS_INCLUDE_SUBDOMAINS", "0") == "1"
-SECURE_HSTS_PRELOAD = os.environ.get("SECURE_HSTS_PRELOAD", "0") == "1"
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = False
+SECURE_HSTS_SECONDS = 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
 if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
     CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}")
 
-MAX_UPLOAD_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))
-MAX_THUMBNAIL_SIZE = int(os.environ.get("MAX_THUMBNAIL_SIZE", str(12 * 1024 * 1024)))
+MAX_UPLOAD_SIZE = env_optional_int("MAX_UPLOAD_SIZE", None)
+MAX_THUMBNAIL_SIZE = env_optional_int("MAX_THUMBNAIL_SIZE", 12 * 1024 * 1024)
+DATA_UPLOAD_MAX_MEMORY_SIZE = env_optional_int("DATA_UPLOAD_MAX_MEMORY_SIZE", None)
+FILE_UPLOAD_MAX_MEMORY_SIZE = env_optional_int("FILE_UPLOAD_MAX_MEMORY_SIZE", 0) or 0
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 TELEGRAM_ADMIN_USERNAMES = env_list("TELEGRAM_ADMIN_USERNAMES", "")

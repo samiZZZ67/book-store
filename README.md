@@ -2,7 +2,7 @@
 
 Small Django project for uploading PDFs, requesting per-book access, and reading approved PDFs inside the website.
 
-The default local database is SQLite, so it runs without installing a database server. Render deployments use PostgreSQL through `DATABASE_URL`.
+The default local database is SQLite, so it runs without installing a database server. Production deployments use PostgreSQL through `DATABASE_URL` or Azure PostgreSQL Service Connector variables.
 
 Admins can add a JPG, PNG, GIF, or WebP thumbnail when uploading a PDF, and can update or remove each book thumbnail later from the admin dashboard.
 
@@ -110,7 +110,7 @@ The in-site reader includes these basic features:
 
 ## Cloudinary media storage
 
-Cloudinary stores uploaded files, not the Django database rows. Keep using SQLite locally or PostgreSQL on Render for users, access requests, and book records.
+Cloudinary stores uploaded files, not the Django database rows. Keep using SQLite locally or PostgreSQL in production for users, access requests, and book records.
 
 To store uploaded PDFs and thumbnails in Cloudinary, set either:
 
@@ -135,6 +135,8 @@ CLOUDINARY_STORAGE_PREFIX=pdf-library
 
 Uploaded PDFs are still served through the protected Django route, so users need login, approval, and a current viewer token to read from the site.
 
+PDF uploads have no Django-side size limit by default. Keep `MAX_UPLOAD_SIZE` blank or set it to `0`, `none`, or `unlimited` for Cloudinary-backed uploads. Cloudinary, Azure App Service, browser timeouts, and temporary disk space can still impose their own practical limits.
+
 Cloudinary can block public PDF delivery depending on the account security settings. The app first tries normal raw delivery and then falls back to a signed Cloudinary download URL. For best PDF support, enable Cloudinary Console > Settings > Security > **Allow delivery of PDF and ZIP files**.
 
 To verify upload, large upload, delete, and credentials from Render Shell:
@@ -150,6 +152,50 @@ python manage.py migrate_media_to_cloudinary
 ```
 
 Use `--dry-run` to preview and `--force` to replace existing Cloudinary assets.
+
+## Deploy on Azure App Service
+
+Use a Linux Python App Service. Set the Startup Command to:
+
+```text
+bash start.sh
+```
+
+Set these App Service environment variables:
+
+```text
+DJANGO_ENV=production
+DJANGO_SECRET_KEY=<long-random-secret>
+SITE_URL=https://<your-app>.azurewebsites.net
+MAX_UPLOAD_SIZE=0
+```
+
+For the database, either set:
+
+```text
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
+DB_SSL_REQUIRE=1
+```
+
+Or connect Azure Database for PostgreSQL with Service Connector using the Django/password client type, which provides:
+
+```text
+AZURE_POSTGRESQL_HOST=<server>.postgres.database.azure.com
+AZURE_POSTGRESQL_NAME=<database>
+AZURE_POSTGRESQL_USER=<user>
+AZURE_POSTGRESQL_PASSWORD=<password>
+AZURE_POSTGRESQL_PORT=5432
+AZURE_POSTGRESQL_SSL=true
+```
+
+`WEBSITE_HOSTNAME` is added by Azure automatically, so the default `*.azurewebsites.net` host is allowed without hard-coding it. For custom domains, set:
+
+```text
+DJANGO_ALLOWED_HOSTS=www.example.com,example.com
+CSRF_TRUSTED_ORIGINS=https://www.example.com,https://example.com
+```
+
+The startup script runs `collectstatic`, migrations, optional admin creation, and Gunicorn. For uploaded PDFs and thumbnails, prefer `CLOUDINARY_URL`; without Cloudinary, Azure deployments default `MEDIA_ROOT` to `/home/site/media`.
 
 ## Deploy on Render
 
@@ -205,6 +251,7 @@ If Render shows `Running 'gunicorn pdfsite.wsgi'` in the logs, the Start Command
 The start script runs:
 
 ```bash
+python manage.py collectstatic --noinput
 python manage.py migrate --noinput
 python manage.py create_admin ... # only when DJANGO_ADMIN_* env vars are set
 gunicorn pdfsite.wsgi:application --bind 0.0.0.0:${PORT:-8000}

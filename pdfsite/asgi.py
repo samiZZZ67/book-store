@@ -3,6 +3,9 @@ import os
 from django.core.asgi import get_asgi_application
 
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pdfsite.settings")
+env = os.environ.get("DJANGO_ENV") or (
+    "production" if os.environ.get("WEBSITE_HOSTNAME") else "development"
+)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", f"pdfsite.settings.{env}")
 
 application = get_asgi_application()

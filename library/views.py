@@ -158,11 +158,20 @@ def thumbnail_url_for(book):
     return reverse("book_thumbnail", kwargs={"book_id": str(book.id)})
 
 
+def exceeds_size_limit(uploaded_file, size_limit):
+    return bool(
+        uploaded_file
+        and size_limit is not None
+        and size_limit > 0
+        and uploaded_file.size > size_limit
+    )
+
+
 def validate_thumbnail(uploaded_file):
     if not uploaded_file:
         return True, ""
 
-    if uploaded_file.size > settings.MAX_THUMBNAIL_SIZE:
+    if exceeds_size_limit(uploaded_file, settings.MAX_THUMBNAIL_SIZE):
         return False, "Thumbnail image is too large."
 
     filename = get_valid_filename(uploaded_file.name)
@@ -620,7 +629,7 @@ def upload_pdf(request):
         messages.error(request, "Title and PDF file are required.")
         return redirect_or_json(request, "admin_dashboard")
 
-    if uploaded_file.size > settings.MAX_UPLOAD_SIZE:
+    if exceeds_size_limit(uploaded_file, settings.MAX_UPLOAD_SIZE):
         messages.error(request, "PDF file is too large.")
         return redirect_or_json(request, "admin_dashboard")
 

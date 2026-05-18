@@ -13,6 +13,7 @@ from PIL import Image
 
 from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
 from .storage import CloudinaryDeliveryError, CloudinaryRawStorage, cloudinary_file_response
+from .views import exceeds_size_limit
 
 
 class BookAccessTests(TestCase):
@@ -194,6 +195,17 @@ class BookAccessTests(TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertIn("PDF upload failed", response.json()["error"])
         self.assertIn("Invalid Signature", response.json()["error"])
+
+    def test_upload_size_limit_can_be_disabled(self):
+        uploaded_file = SimpleUploadedFile(
+            "large.pdf",
+            b"%PDF-1.4\n" + b"x" * 2048,
+            content_type="application/pdf",
+        )
+
+        self.assertFalse(exceeds_size_limit(uploaded_file, None))
+        self.assertFalse(exceeds_size_limit(uploaded_file, 0))
+        self.assertTrue(exceeds_size_limit(uploaded_file, 1024))
 
     @override_settings(CLOUDINARY_UPLOAD_CHUNK_SIZE=6 * 1024 * 1024)
     def test_cloudinary_storage_uses_chunked_raw_upload(self):
