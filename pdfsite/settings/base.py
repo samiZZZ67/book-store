@@ -7,9 +7,19 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+IS_RENDER_SERVICE = bool(
+    os.environ.get("RENDER")
+    or os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+    or os.environ.get("RENDER_SERVICE_ID")
+    or os.environ.get("RENDER_SERVICE_NAME")
+)
 CURRENT_ENV = (
     os.environ.get("DJANGO_ENV")
-    or ("production" if os.environ.get("DJANGO_DEBUG") == "0" else "development")
+    or (
+        "production"
+        if os.environ.get("DJANGO_DEBUG") == "0" or IS_RENDER_SERVICE
+        else "development"
+    )
 ).lower()
 SETTINGS_MODULE = os.environ.get("DJANGO_SETTINGS_MODULE", "")
 IS_PRODUCTION = CURRENT_ENV == "production" or SETTINGS_MODULE.endswith(".production")

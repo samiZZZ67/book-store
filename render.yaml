@@ -12,9 +12,9 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_ALLOWED_HOSTS
-        value: ".onrender.com"
+        value: ".onrender.com,book-store-b922.onrender.com"
       - key: CSRF_TRUSTED_ORIGINS
-        value: "https://*.onrender.com"
+        value: "https://*.onrender.com,https://book-store-b922.onrender.com"
       - key: DB_SSL_REQUIRE
         value: "1"
       - key: MEDIA_ROOT

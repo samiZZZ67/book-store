@@ -18,6 +18,7 @@ def host_from_url(url):
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "")
 for host in (
     ".onrender.com",
+    "book-store-b922.onrender.com",
     os.environ.get("RENDER_EXTERNAL_HOSTNAME"),
     host_from_url(SITE_URL),
 ):

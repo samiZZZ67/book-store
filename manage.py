@@ -3,8 +3,14 @@ import sys
 
 
 def default_environment():
+    is_render_service = bool(
+        os.environ.get("RENDER")
+        or os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+        or os.environ.get("RENDER_SERVICE_ID")
+        or os.environ.get("RENDER_SERVICE_NAME")
+    )
     return os.environ.get("DJANGO_ENV") or (
-        "production" if os.environ.get("DJANGO_DEBUG") == "0" else "development"
+        "production" if os.environ.get("DJANGO_DEBUG") == "0" or is_render_service else "development"
     )
 
 
