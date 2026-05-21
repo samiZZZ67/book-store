@@ -516,16 +516,85 @@
         renderNearby(state.pageNumber);
     }
 
+    function clearPinchPreview() {
+        app.classList.remove("is-touch-zooming");
+        els.pages.style.removeProperty("--reader-pinch-scale");
+        els.pages.style.removeProperty("--reader-pinch-origin-x");
+        els.pages.style.removeProperty("--reader-pinch-origin-y");
+    }
+
+    function captureZoomAnchor(anchor) {
+        var shellBounds = els.canvasShell.getBoundingClientRect();
+        var clientX = anchor ? anchor.clientX : shellBounds.left + shellBounds.width / 2;
+        var clientY = anchor ? anchor.clientY : shellBounds.top + shellBounds.height / 2;
+        var target = document.elementFromPoint(clientX, clientY);
+        var shell = target && target.closest ? target.closest(".pdf-page-shell") : null;
+        var shellRect;
+
+        if (!shell || !els.pages.contains(shell)) {
+            shell = pageShell(state.pageNumber) || els.pages.querySelector(".pdf-page-shell");
+        }
+
+        if (!shell) {
+            return null;
+        }
+
+        shellRect = shell.getBoundingClientRect();
+        return {
+            pageNumber: Number(shell.dataset.pageNumber) || state.pageNumber,
+            viewportX: clientX - shellBounds.left,
+            viewportY: clientY - shellBounds.top,
+            ratioX: shellRect.width ? clampValue((clientX - shellRect.left) / shellRect.width, 0, 1) : 0.5,
+            ratioY: shellRect.height ? clampValue((clientY - shellRect.top) / shellRect.height, 0, 1) : 0.5
+        };
+    }
+
+    function restoreZoomAnchor(anchorState) {
+        var shell;
+        var shellBounds;
+        var shellRect;
+        var contentLeft;
+        var contentTop;
+        var maxScrollLeft;
+        var maxScrollTop;
+
+        if (!anchorState) {
+            return;
+        }
+
+        shell = pageShell(anchorState.pageNumber);
+        if (!shell) {
+            return;
+        }
+
+        shellBounds = els.canvasShell.getBoundingClientRect();
+        shellRect = shell.getBoundingClientRect();
+        contentLeft = shellRect.left - shellBounds.left + els.canvasShell.scrollLeft;
+        contentTop = shellRect.top - shellBounds.top + els.canvasShell.scrollTop;
+        maxScrollLeft = Math.max(0, els.canvasShell.scrollWidth - els.canvasShell.clientWidth);
+        maxScrollTop = Math.max(0, els.canvasShell.scrollHeight - els.canvasShell.clientHeight);
+
+        els.canvasShell.scrollLeft = clampValue(
+            contentLeft + shellRect.width * anchorState.ratioX - anchorState.viewportX,
+            0,
+            maxScrollLeft
+        );
+        els.canvasShell.scrollTop = clampValue(
+            contentTop + shellRect.height * anchorState.ratioY - anchorState.viewportY,
+            0,
+            maxScrollTop
+        );
+        state.pageNumber = clampPage(anchorState.pageNumber);
+        updateStatus();
+    }
+
     function applyReaderZoom(nextZoom, anchor, smooth) {
         var previousZoom = state.readerZoom;
-        var shellRect = els.canvasShell.getBoundingClientRect();
-        var anchorX = anchor ? anchor.clientX - shellRect.left : shellRect.width / 2;
-        var anchorY = anchor ? anchor.clientY - shellRect.top : shellRect.height / 2;
-        var contentX = els.canvasShell.scrollLeft + anchorX;
-        var contentY = els.canvasShell.scrollTop + anchorY;
-        var ratio;
+        var anchorState = captureZoomAnchor(anchor);
 
         nextZoom = clampValue(nextZoom, state.minReaderZoom, state.maxReaderZoom);
+        clearPinchPreview();
+
         if (Math.abs(nextZoom - previousZoom) < 0.01) {
             state.readerZoom = nextZoom;
             updateReaderChrome();
@@ -533,7 +602,6 @@
         }
 
         state.readerZoom = nextZoom;
-        ratio = state.readerZoom / previousZoom;
         updateReaderChrome();
         if (smooth !== false) {
             app.classList.add("is-reader-zoom-settling");
@@ -541,9 +609,13 @@
 
         state.pdf.getPage(1).then(setEstimatedPageSize).then(function () {
             rerenderVisiblePages();
+            if (anchorState) {
+                return renderPage(anchorState.pageNumber, true);
+            }
+            return null;
+        }).then(function () {
             window.requestAnimationFrame(function () {
-                els.canvasShell.scrollLeft = Math.max(0, contentX * ratio - anchorX);
-                els.canvasShell.scrollTop = Math.max(0, contentY * ratio - anchorY);
+                restoreZoomAnchor(anchorState);
                 handleScroll();
                 window.setTimeout(function () {
                     app.classList.remove("is-reader-zoom-settling");
@@ -635,10 +707,6 @@
             clientY: state.pinch.centerY
         };
         state.pinch.active = false;
-        app.classList.remove("is-touch-zooming");
-        els.pages.style.removeProperty("--reader-pinch-scale");
-        els.pages.style.removeProperty("--reader-pinch-origin-x");
-        els.pages.style.removeProperty("--reader-pinch-origin-y");
         applyReaderZoom(state.pinch.previewZoom, anchor, true);
 
         if (event) {
