@@ -24,13 +24,34 @@
         pageNumber: 1,
         totalPages: 0,
         fitWidth: true,
+        readerZoom: 1,
+        minReaderZoom: 1,
+        maxReaderZoom: 3,
         controlsLocked: true,
         controlsOpen: false,
         immersive: false,
         observer: null,
         renderingPages: {},
         scrollFrame: null,
-        resizeTimer: null
+        resizeTimer: null,
+        pinch: {
+            active: false,
+            startDistance: 0,
+            startZoom: 1,
+            previewZoom: 1,
+            centerX: 0,
+            centerY: 0
+        },
+        pan: {
+            tracking: false,
+            active: false,
+            startX: 0,
+            startY: 0,
+            startScrollLeft: 0,
+            startScrollTop: 0,
+            startTime: 0,
+            startOnText: false
+        }
     };
 
     var els = {
@@ -100,6 +121,22 @@
         return Boolean(compactReaderQuery && compactReaderQuery.matches);
     }
 
+    function clampValue(value, min, max) {
+        return Math.max(min, Math.min(max, Number(value) || min));
+    }
+
+    function activeReaderZoom() {
+        return state.immersive ? state.readerZoom : 1;
+    }
+
+    function isZoomedReader() {
+        return activeReaderZoom() > 1.01;
+    }
+
+    function canUseTouchZoom() {
+        return Boolean(state.pdf && state.immersive);
+    }
+
     function shellContentWidth() {
         var styles = window.getComputedStyle ? window.getComputedStyle(els.canvasShell) : null;
         var horizontalPadding = 0;
@@ -119,6 +156,7 @@
         app.classList.toggle("is-immersive", state.immersive);
         app.classList.toggle("is-compact-reader", isCompactReader());
         app.classList.toggle("is-controls-open", controlsOpen);
+        app.classList.toggle("is-reader-zoomed", isZoomedReader());
         document.body.classList.toggle("reader-immersive-lock", state.immersive);
 
         if (els.controlsToggle) {
@@ -131,6 +169,17 @@
     function setControlsOpen(open) {
         state.controlsOpen = Boolean(open);
         updateReaderChrome();
+    }
+
+    function resetTouchGestureState() {
+        state.pinch.active = false;
+        state.pan.tracking = false;
+        state.pan.active = false;
+        app.classList.remove("is-touch-zooming");
+        app.classList.remove("is-reader-panning");
+        els.pages.style.removeProperty("--reader-pinch-scale");
+        els.pages.style.removeProperty("--reader-pinch-origin-x");
+        els.pages.style.removeProperty("--reader-pinch-origin-y");
     }
 
     function refreshReaderLayout() {
@@ -147,16 +196,24 @@
         if (state.immersive) {
             state.controlsOpen = false;
         }
+        resetTouchGestureState();
         updateReaderChrome();
+        if (!state.immersive && state.readerZoom !== 1) {
+            applyReaderZoom(1, null, false);
+        }
         refreshReaderLayout();
     }
 
     function scaleForPage(page) {
         var viewport = page.getViewport({ scale: 1 });
+        var baseScale;
         if (!state.fitWidth) {
-            return 1;
+            baseScale = 1;
+        } else {
+            baseScale = Math.min(2.25, shellContentWidth() / viewport.width);
         }
-        return Math.min(2.25, shellContentWidth() / viewport.width);
+
+        return Math.min(4.5, baseScale * activeReaderZoom());
     }
 
     function setEstimatedPageSize(page) {
@@ -459,6 +516,239 @@
         renderNearby(state.pageNumber);
     }
 
+    function applyReaderZoom(nextZoom, anchor, smooth) {
+        var previousZoom = state.readerZoom;
+        var shellRect = els.canvasShell.getBoundingClientRect();
+        var anchorX = anchor ? anchor.clientX - shellRect.left : shellRect.width / 2;
+        var anchorY = anchor ? anchor.clientY - shellRect.top : shellRect.height / 2;
+        var contentX = els.canvasShell.scrollLeft + anchorX;
+        var contentY = els.canvasShell.scrollTop + anchorY;
+        var ratio;
+
+        nextZoom = clampValue(nextZoom, state.minReaderZoom, state.maxReaderZoom);
+        if (Math.abs(nextZoom - previousZoom) < 0.01) {
+            state.readerZoom = nextZoom;
+            updateReaderChrome();
+            return;
+        }
+
+        state.readerZoom = nextZoom;
+        ratio = state.readerZoom / previousZoom;
+        updateReaderChrome();
+        if (smooth !== false) {
+            app.classList.add("is-reader-zoom-settling");
+        }
+
+        state.pdf.getPage(1).then(setEstimatedPageSize).then(function () {
+            rerenderVisiblePages();
+            window.requestAnimationFrame(function () {
+                els.canvasShell.scrollLeft = Math.max(0, contentX * ratio - anchorX);
+                els.canvasShell.scrollTop = Math.max(0, contentY * ratio - anchorY);
+                handleScroll();
+                window.setTimeout(function () {
+                    app.classList.remove("is-reader-zoom-settling");
+                    renderVisiblePages();
+                }, 180);
+            });
+        });
+    }
+
+    function touchDistance(touchA, touchB) {
+        return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY);
+    }
+
+    function touchCenter(touchA, touchB) {
+        return {
+            clientX: (touchA.clientX + touchB.clientX) / 2,
+            clientY: (touchA.clientY + touchB.clientY) / 2
+        };
+    }
+
+    function targetIsReaderChrome(target) {
+        return Boolean(
+            (els.controlsPanel && els.controlsPanel.contains(target)) ||
+            (els.controlsToggle && els.controlsToggle.contains(target))
+        );
+    }
+
+    function setPinchPreview(previewZoom) {
+        var previewScale = previewZoom / state.pinch.startZoom;
+
+        els.pages.style.setProperty("--reader-pinch-scale", previewScale.toFixed(4));
+        app.classList.add("is-touch-zooming");
+    }
+
+    function startPinch(event) {
+        var firstTouch = event.touches[0];
+        var secondTouch = event.touches[1];
+        var center = touchCenter(firstTouch, secondTouch);
+        var pagesRect = els.pages.getBoundingClientRect();
+
+        if (!canUseTouchZoom() || targetIsReaderChrome(event.target)) {
+            return;
+        }
+
+        setControlsOpen(false);
+        state.pinch.active = true;
+        state.pinch.startDistance = Math.max(1, touchDistance(firstTouch, secondTouch));
+        state.pinch.startZoom = state.readerZoom;
+        state.pinch.previewZoom = state.readerZoom;
+        state.pinch.centerX = center.clientX;
+        state.pinch.centerY = center.clientY;
+        state.pan.tracking = false;
+        state.pan.active = false;
+
+        els.pages.style.setProperty("--reader-pinch-origin-x", Math.max(0, center.clientX - pagesRect.left) + "px");
+        els.pages.style.setProperty("--reader-pinch-origin-y", Math.max(0, center.clientY - pagesRect.top) + "px");
+        setPinchPreview(state.readerZoom);
+        event.preventDefault();
+    }
+
+    function updatePinch(event) {
+        var firstTouch = event.touches[0];
+        var secondTouch = event.touches[1];
+        var center = touchCenter(firstTouch, secondTouch);
+        var nextZoom;
+
+        if (!state.pinch.active) {
+            startPinch(event);
+            return;
+        }
+
+        nextZoom = state.pinch.startZoom * (touchDistance(firstTouch, secondTouch) / state.pinch.startDistance);
+        state.pinch.previewZoom = clampValue(nextZoom, state.minReaderZoom, state.maxReaderZoom);
+        state.pinch.centerX = center.clientX;
+        state.pinch.centerY = center.clientY;
+        setPinchPreview(state.pinch.previewZoom);
+        event.preventDefault();
+    }
+
+    function finishPinch(event) {
+        var anchor;
+
+        if (!state.pinch.active) {
+            return;
+        }
+
+        anchor = {
+            clientX: state.pinch.centerX,
+            clientY: state.pinch.centerY
+        };
+        state.pinch.active = false;
+        app.classList.remove("is-touch-zooming");
+        els.pages.style.removeProperty("--reader-pinch-scale");
+        els.pages.style.removeProperty("--reader-pinch-origin-x");
+        els.pages.style.removeProperty("--reader-pinch-origin-y");
+        applyReaderZoom(state.pinch.previewZoom, anchor, true);
+
+        if (event) {
+            event.preventDefault();
+        }
+    }
+
+    function startPanTracking(event) {
+        var touch = event.touches[0];
+
+        if (!canUseTouchZoom() || !isZoomedReader() || targetIsReaderChrome(event.target)) {
+            return;
+        }
+
+        state.pan.tracking = true;
+        state.pan.active = false;
+        state.pan.startX = touch.clientX;
+        state.pan.startY = touch.clientY;
+        state.pan.startScrollLeft = els.canvasShell.scrollLeft;
+        state.pan.startScrollTop = els.canvasShell.scrollTop;
+        state.pan.startTime = Date.now();
+        state.pan.startOnText = Boolean(event.target.closest && event.target.closest(".textLayer span"));
+    }
+
+    function updatePan(event) {
+        var touch = event.touches[0];
+        var dx = touch.clientX - state.pan.startX;
+        var dy = touch.clientY - state.pan.startY;
+        var moved = Math.hypot(dx, dy);
+
+        if (!state.pan.tracking || !touch) {
+            return;
+        }
+
+        if (!state.pan.active) {
+            if (moved < 7) {
+                return;
+            }
+            if (state.pan.startOnText && Date.now() - state.pan.startTime > 220) {
+                state.pan.tracking = false;
+                return;
+            }
+            state.pan.active = true;
+            setControlsOpen(false);
+            app.classList.add("is-reader-panning");
+        }
+
+        event.preventDefault();
+        els.canvasShell.scrollLeft = Math.max(0, state.pan.startScrollLeft - dx);
+        els.canvasShell.scrollTop = Math.max(0, state.pan.startScrollTop - dy);
+        handleScroll();
+    }
+
+    function finishPan() {
+        state.pan.tracking = false;
+        state.pan.active = false;
+        app.classList.remove("is-reader-panning");
+    }
+
+    function handleReaderTouchStart(event) {
+        if (!canUseTouchZoom()) {
+            return;
+        }
+
+        if (event.touches.length >= 2) {
+            startPinch(event);
+            return;
+        }
+
+        if (event.touches.length === 1) {
+            startPanTracking(event);
+        }
+    }
+
+    function handleReaderTouchMove(event) {
+        if (!canUseTouchZoom()) {
+            return;
+        }
+
+        if (event.touches.length >= 2) {
+            updatePinch(event);
+            return;
+        }
+
+        if (state.pinch.active) {
+            finishPinch(event);
+            return;
+        }
+
+        if (event.touches.length === 1) {
+            updatePan(event);
+        }
+    }
+
+    function handleReaderTouchEnd(event) {
+        if (state.pinch.active && (!event.touches || event.touches.length < 2)) {
+            finishPinch(event);
+        }
+
+        if (!event.touches || event.touches.length === 0) {
+            finishPan();
+        }
+    }
+
+    function handleNativeGesture(event) {
+        if (canUseTouchZoom() && !targetIsReaderChrome(event.target)) {
+            event.preventDefault();
+        }
+    }
+
     function enterFullscreen() {
         setImmersiveMode(true);
 
@@ -563,6 +853,9 @@
     }
     els.fitWidth.addEventListener("click", function () {
         state.fitWidth = true;
+        if (state.readerZoom !== 1) {
+            applyReaderZoom(1, null, true);
+        }
         updateStatus();
         rerenderVisiblePages();
     });
@@ -575,6 +868,13 @@
         }
     });
     els.canvasShell.addEventListener("scroll", handleScroll, { passive: true });
+    els.canvasShell.addEventListener("touchstart", handleReaderTouchStart, { passive: false });
+    els.canvasShell.addEventListener("touchmove", handleReaderTouchMove, { passive: false });
+    els.canvasShell.addEventListener("touchend", handleReaderTouchEnd, { passive: false });
+    els.canvasShell.addEventListener("touchcancel", handleReaderTouchEnd, { passive: false });
+    els.canvasShell.addEventListener("gesturestart", handleNativeGesture, { passive: false });
+    els.canvasShell.addEventListener("gesturechange", handleNativeGesture, { passive: false });
+    els.canvasShell.addEventListener("gestureend", handleNativeGesture, { passive: false });
     els.canvasShell.addEventListener("click", function () {
         if ((state.immersive || isCompactReader()) && state.controlsOpen) {
             setControlsOpen(false);
