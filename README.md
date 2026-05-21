@@ -137,6 +137,19 @@ Uploaded PDFs are still served through the protected Django route, so users need
 
 PDF uploads have no Django-side size limit by default. Keep `MAX_UPLOAD_SIZE` blank or set it to `0`, `none`, or `unlimited` for Cloudinary-backed uploads. Cloudinary, Render, browser timeouts, and temporary disk space can still impose their own practical limits.
 
+Cloudinary may reject raw PDF uploads above 10 MB on some accounts. The app compresses PDFs with Ghostscript before uploading to Cloudinary when they meet or exceed `CLOUDINARY_MAX_UPLOAD_SIZE`. Render includes Ghostscript in the deploy runtime. Use these settings to tune compression:
+
+```text
+CLOUDINARY_MAX_UPLOAD_SIZE=10485760
+PDF_COMPRESSION_ENABLED=1
+PDF_COMPRESSION_MIN_SIZE=10485760
+PDF_COMPRESSION_PRESETS=/ebook,/screen
+PDF_COMPRESSOR_BINARY=gs
+PDF_COMPRESSION_TIMEOUT=120
+```
+
+Compression is best-effort. Scanned/image-heavy PDFs usually shrink; already optimized PDFs might still remain over the Cloudinary limit.
+
 Cloudinary can block public PDF delivery depending on the account security settings. The app first tries normal raw delivery and then falls back to a signed Cloudinary download URL. For best PDF support, enable Cloudinary Console > Settings > Security > **Allow delivery of PDF and ZIP files**.
 
 To verify upload, large upload, delete, and credentials from Render Shell:

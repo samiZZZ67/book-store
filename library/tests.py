@@ -14,7 +14,7 @@ from PIL import Image
 
 from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
 from .storage import CloudinaryDeliveryError, CloudinaryRawStorage, cloudinary_file_response
-from .views import exceeds_size_limit
+from .views import exceeds_size_limit, prepare_pdf_for_storage
 
 
 class BookAccessTests(TestCase):
@@ -236,6 +236,59 @@ class BookAccessTests(TestCase):
         self.assertFalse(exceeds_size_limit(uploaded_file, None))
         self.assertFalse(exceeds_size_limit(uploaded_file, 0))
         self.assertTrue(exceeds_size_limit(uploaded_file, 1024))
+
+    @override_settings(
+        USE_CLOUDINARY_STORAGE=True,
+        CLOUDINARY_MAX_UPLOAD_SIZE=1024,
+        PDF_COMPRESSION_ENABLED=True,
+        PDF_COMPRESSION_MIN_SIZE=1024,
+    )
+    def test_cloudinary_pdf_over_limit_is_compressed_before_storage(self):
+        uploaded_file = SimpleUploadedFile(
+            "large.pdf",
+            b"%PDF-1.4\n" + b"x" * 2048,
+            content_type="application/pdf",
+        )
+        compressed_file = ContentFile(b"%PDF-1.4\nsmall", name="large.pdf")
+
+        with patch(
+            "library.views.compress_pdf_with_ghostscript",
+            return_value=(compressed_file, ""),
+        ):
+            prepared_file, error, notice = prepare_pdf_for_storage(
+                uploaded_file,
+                "large.pdf",
+            )
+
+        self.assertEqual(error, "")
+        self.assertIs(prepared_file, compressed_file)
+        self.assertIn("compressed", notice.lower())
+
+    @override_settings(
+        USE_CLOUDINARY_STORAGE=True,
+        CLOUDINARY_MAX_UPLOAD_SIZE=1024,
+        PDF_COMPRESSION_ENABLED=True,
+        PDF_COMPRESSION_MIN_SIZE=1024,
+    )
+    def test_cloudinary_pdf_over_limit_reports_failed_compression(self):
+        uploaded_file = SimpleUploadedFile(
+            "large.pdf",
+            b"%PDF-1.4\n" + b"x" * 2048,
+            content_type="application/pdf",
+        )
+
+        with patch(
+            "library.views.compress_pdf_with_ghostscript",
+            return_value=(None, "Ghostscript could not reduce this PDF."),
+        ):
+            prepared_file, error, notice = prepare_pdf_for_storage(
+                uploaded_file,
+                "large.pdf",
+            )
+
+        self.assertIsNone(prepared_file)
+        self.assertIn("Cloudinary upload limit", error)
+        self.assertEqual(notice, "")
 
     @override_settings(CLOUDINARY_UPLOAD_CHUNK_SIZE=6 * 1024 * 1024)
     def test_cloudinary_storage_uses_chunked_raw_upload(self):

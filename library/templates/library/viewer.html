@@ -13,39 +13,49 @@
     data-book-id="{{ book.id }}"
     data-book-title="{{ book.title }}"
 >
-    <header class="reader-header">
-        <div>
-            <h1>{{ book.title }}</h1>
-            <div class="reader-progress">
-                <span id="page-status">Loading</span>
+    <div id="reader-controls-panel" class="reader-controls-panel">
+        <header class="reader-header">
+            <div>
+                <h1>{{ book.title }}</h1>
+                <div class="reader-progress">
+                    <span id="page-status">Loading</span>
+                </div>
             </div>
-        </div>
-        <div class="actions">
-            <a class="button" href="{% url 'home' %}">Exit</a>
-        </div>
-    </header>
+            <div class="actions">
+                <a class="button" href="{% url 'home' %}">Exit</a>
+            </div>
+        </header>
 
-    <div class="reader-toolbar" aria-label="PDF reader controls">
-        <label class="reader-page-jump" for="reader-contrast">Contrast</label>
-        <select id="reader-contrast" data-contrast-select>
-            <option value="default">Default</option>
-            <option value="high">High</option>
-            <option value="dark">Dark</option>
-            <option value="sepia">Sepia</option>
-            <option value="soft">Soft</option>
-        </select>
-        <button id="first-page" type="button">First</button>
-        <button id="prev-page" type="button">Up</button>
-        <button id="next-page" type="button">Down</button>
-        <button id="last-page" type="button">Last</button>
-        <button id="fullscreen-btn" type="button">Full Screen</button>
-        <button id="exit-fullscreen-btn" type="button">Exit Full Screen</button>
-        <button id="fit-width" type="button">Fit Width</button>
-        <label class="reader-page-jump" for="page-number">Page</label>
-        <input id="page-number" type="number" min="1" value="1">
-        <span id="page-count">/ 0</span>
-        <button id="search-page" type="button">Search Page</button>
+        <div class="reader-toolbar" aria-label="PDF reader controls">
+            <label class="reader-page-jump" for="reader-contrast">Contrast</label>
+            <select id="reader-contrast" data-contrast-select>
+                <option value="default">Default</option>
+                <option value="high">High</option>
+                <option value="dark">Dark</option>
+                <option value="sepia">Sepia</option>
+                <option value="soft">Soft</option>
+            </select>
+            <button id="first-page" type="button">First</button>
+            <button id="prev-page" type="button">Up</button>
+            <button id="next-page" type="button">Down</button>
+            <button id="last-page" type="button">Last</button>
+            <button id="fullscreen-btn" type="button">Full Screen</button>
+            <button id="exit-fullscreen-btn" type="button">Exit Full Screen</button>
+            <button id="fit-width" type="button">Fit Width</button>
+            <label class="reader-page-jump" for="page-number">Page</label>
+            <input id="page-number" type="number" min="1" value="1">
+            <span id="page-count">/ 0</span>
+            <button id="search-page" type="button">Search Page</button>
+        </div>
     </div>
+
+    <button
+        id="reader-controls-toggle"
+        class="reader-controls-toggle"
+        type="button"
+        aria-controls="reader-controls-panel"
+        aria-expanded="false"
+    >Menu</button>
 
     <div class="reader-workspace">
         <section id="canvas-shell" class="canvas-shell">

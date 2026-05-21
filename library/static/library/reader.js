@@ -5,8 +5,6 @@
         return false;
     }
 
-    document.addEventListener("contextmenu", blockEvent);
-    document.addEventListener("dragstart", blockEvent);
     document.addEventListener("keydown", function (event) {
         var key = String(event.key || "").toLowerCase();
         if ((event.ctrlKey || event.metaKey) && (key === "s" || key === "p")) {
@@ -27,6 +25,8 @@
         totalPages: 0,
         fitWidth: true,
         controlsLocked: true,
+        controlsOpen: false,
+        immersive: false,
         observer: null,
         renderingPages: {},
         scrollFrame: null,
@@ -47,8 +47,11 @@
         fullscreen: document.getElementById("fullscreen-btn"),
         exitFullscreen: document.getElementById("exit-fullscreen-btn"),
         fitWidth: document.getElementById("fit-width"),
-        searchPage: document.getElementById("search-page")
+        searchPage: document.getElementById("search-page"),
+        controlsPanel: document.getElementById("reader-controls-panel"),
+        controlsToggle: document.getElementById("reader-controls-toggle")
     };
+    var compactReaderQuery = window.matchMedia ? window.matchMedia("(max-width: 640px)") : null;
 
     function setLoading(message) {
         els.loading.textContent = message;
@@ -93,8 +96,59 @@
         updateStatus();
     }
 
+    function isCompactReader() {
+        return Boolean(compactReaderQuery && compactReaderQuery.matches);
+    }
+
     function shellContentWidth() {
-        return Math.max(260, els.canvasShell.clientWidth - 52);
+        var styles = window.getComputedStyle ? window.getComputedStyle(els.canvasShell) : null;
+        var horizontalPadding = 0;
+        var edgeGap = isCompactReader() ? 4 : 16;
+
+        if (styles) {
+            horizontalPadding = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+        }
+
+        return Math.max(260, els.canvasShell.clientWidth - horizontalPadding - edgeGap);
+    }
+
+    function updateReaderChrome() {
+        var floatingControls = state.immersive || isCompactReader();
+        var controlsOpen = floatingControls && state.controlsOpen;
+
+        app.classList.toggle("is-immersive", state.immersive);
+        app.classList.toggle("is-compact-reader", isCompactReader());
+        app.classList.toggle("is-controls-open", controlsOpen);
+        document.body.classList.toggle("reader-immersive-lock", state.immersive);
+
+        if (els.controlsToggle) {
+            els.controlsToggle.hidden = !floatingControls;
+            els.controlsToggle.textContent = controlsOpen ? "Hide" : "Menu";
+            els.controlsToggle.setAttribute("aria-expanded", controlsOpen ? "true" : "false");
+        }
+    }
+
+    function setControlsOpen(open) {
+        state.controlsOpen = Boolean(open);
+        updateReaderChrome();
+    }
+
+    function refreshReaderLayout() {
+        window.clearTimeout(state.resizeTimer);
+        state.resizeTimer = window.setTimeout(function () {
+            if (state.pdf && state.fitWidth) {
+                state.pdf.getPage(1).then(setEstimatedPageSize).then(rerenderVisiblePages);
+            }
+        }, 180);
+    }
+
+    function setImmersiveMode(enabled) {
+        state.immersive = Boolean(enabled);
+        if (state.immersive) {
+            state.controlsOpen = false;
+        }
+        updateReaderChrome();
+        refreshReaderLayout();
     }
 
     function scaleForPage(page) {
@@ -169,12 +223,27 @@
             var viewport = page.getViewport({ scale: scale });
             var outputScale = Math.min(window.devicePixelRatio || 1, 2);
             var surface = shell.querySelector(".pdf-page-surface");
+            var stack = surface.querySelector(".pdf-page-stack");
             var canvas = surface.querySelector("canvas");
+            var textLayer = surface.querySelector(".textLayer");
 
-            if (!canvas) {
+            if (!stack) {
+                stack = document.createElement("div");
+                stack.className = "pdf-page-stack";
                 canvas = document.createElement("canvas");
+                textLayer = document.createElement("div");
+                textLayer.className = "textLayer";
+                textLayer.setAttribute("aria-hidden", "true");
                 surface.innerHTML = "";
-                surface.appendChild(canvas);
+                stack.appendChild(canvas);
+                stack.appendChild(textLayer);
+                surface.appendChild(stack);
+            }
+            if (!textLayer) {
+                textLayer = document.createElement("div");
+                textLayer.className = "textLayer";
+                textLayer.setAttribute("aria-hidden", "true");
+                stack.appendChild(textLayer);
             }
 
             var context = canvas.getContext("2d", { alpha: false });
@@ -182,6 +251,11 @@
             canvas.height = Math.floor(viewport.height * outputScale);
             canvas.style.width = Math.floor(viewport.width) + "px";
             canvas.style.height = Math.floor(viewport.height) + "px";
+            stack.style.width = Math.floor(viewport.width) + "px";
+            stack.style.height = Math.floor(viewport.height) + "px";
+            textLayer.style.width = Math.floor(viewport.width) + "px";
+            textLayer.style.height = Math.floor(viewport.height) + "px";
+            textLayer.innerHTML = "";
             shell.style.width = Math.floor(viewport.width) + "px";
             shell.style.minHeight = Math.floor(viewport.height) + "px";
 
@@ -189,7 +263,9 @@
                 canvasContext: context,
                 viewport: viewport,
                 transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null
-            }).promise;
+            }).promise.then(function () {
+                return renderTextLayer(page, viewport, textLayer);
+            });
         }).then(function () {
             delete state.renderingPages[pageNumber];
             shell.dataset.rendered = "1";
@@ -213,6 +289,60 @@
         });
 
         return state.renderingPages[pageNumber];
+    }
+
+    function fallbackTextLayer(textContent, viewport, container) {
+        if (!pdfjsLib.Util || !pdfjsLib.Util.transform) {
+            return;
+        }
+
+        textContent.items.forEach(function (item) {
+            if (!item.str) {
+                return;
+            }
+
+            var tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+            var fontHeight = Math.hypot(tx[2], tx[3]);
+            var span = document.createElement("span");
+
+            span.textContent = item.str;
+            span.style.left = tx[4] + "px";
+            span.style.top = (tx[5] - fontHeight) + "px";
+            span.style.fontSize = fontHeight + "px";
+            span.style.fontFamily = "sans-serif";
+            span.style.transform = "rotate(" + Math.atan2(tx[1], tx[0]) + "rad)";
+            container.appendChild(span);
+        });
+    }
+
+    function renderTextLayer(page, viewport, container) {
+        return page.getTextContent().then(function (textContent) {
+            var renderTask;
+
+            container.innerHTML = "";
+            container.style.setProperty("--scale-factor", viewport.scale);
+
+            if (pdfjsLib.renderTextLayer) {
+                renderTask = pdfjsLib.renderTextLayer({
+                    textContentSource: textContent,
+                    container: container,
+                    viewport: viewport,
+                    textDivs: [],
+                    enhanceTextSelection: true
+                });
+
+                if (renderTask && renderTask.promise) {
+                    return renderTask.promise;
+                }
+
+                return renderTask || null;
+            }
+
+            fallbackTextLayer(textContent, viewport, container);
+            return null;
+        }).catch(function () {
+            container.innerHTML = "";
+        });
     }
 
     function renderNearby(pageNumber) {
@@ -330,13 +460,22 @@
     }
 
     function enterFullscreen() {
-        if (!document.fullscreenElement) {
-            app.requestFullscreen();
+        setImmersiveMode(true);
+
+        if (!document.fullscreenElement && app.requestFullscreen) {
+            var request = app.requestFullscreen();
+            if (request && request.catch) {
+                request.catch(function () {
+                    setImmersiveMode(true);
+                });
+            }
         }
     }
 
     function exitFullscreen() {
-        if (document.fullscreenElement) {
+        setImmersiveMode(false);
+
+        if (document.fullscreenElement && document.exitFullscreen) {
             document.exitFullscreen();
         }
     }
@@ -417,6 +556,11 @@
     els.lastPage.addEventListener("click", function () { scrollToPage(state.totalPages); });
     els.fullscreen.addEventListener("click", enterFullscreen);
     els.exitFullscreen.addEventListener("click", exitFullscreen);
+    if (els.controlsToggle) {
+        els.controlsToggle.addEventListener("click", function () {
+            setControlsOpen(!state.controlsOpen);
+        });
+    }
     els.fitWidth.addEventListener("click", function () {
         state.fitWidth = true;
         updateStatus();
@@ -431,13 +575,20 @@
         }
     });
     els.canvasShell.addEventListener("scroll", handleScroll, { passive: true });
+    els.canvasShell.addEventListener("click", function () {
+        if ((state.immersive || isCompactReader()) && state.controlsOpen) {
+            setControlsOpen(false);
+        }
+    });
     document.addEventListener("keydown", function (event) {
         var targetName = String(event.target.tagName || "").toLowerCase();
         if (targetName === "input" || targetName === "select" || targetName === "textarea") {
             return;
         }
 
-        if (event.key === "ArrowDown" || event.key === "PageDown") {
+        if (event.key === "Escape" && state.immersive) {
+            exitFullscreen();
+        } else if (event.key === "ArrowDown" || event.key === "PageDown") {
             event.preventDefault();
             scrollToPage(state.pageNumber + 1);
         } else if (event.key === "ArrowUp" || event.key === "PageUp") {
@@ -460,7 +611,28 @@
             }
         }, 160);
     });
+    document.addEventListener("fullscreenchange", function () {
+        if (document.fullscreenElement === app) {
+            setImmersiveMode(true);
+        } else if (!document.fullscreenElement && state.immersive) {
+            setImmersiveMode(false);
+        }
+    });
+    if (compactReaderQuery) {
+        if (compactReaderQuery.addEventListener) {
+            compactReaderQuery.addEventListener("change", function () {
+                updateReaderChrome();
+                refreshReaderLayout();
+            });
+        } else if (compactReaderQuery.addListener) {
+            compactReaderQuery.addListener(function () {
+                updateReaderChrome();
+                refreshReaderLayout();
+            });
+        }
+    }
 
+    updateReaderChrome();
     setControlsDisabled(true);
     loadPdf();
 })();

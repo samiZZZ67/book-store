@@ -522,6 +522,7 @@ th {
 }
 
 .reader-app {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: calc(100vh - 32px);
@@ -529,6 +530,11 @@ th {
     overflow: hidden;
     border: 1px solid #cfd8e1;
     border-radius: 6px;
+    background: #ffffff;
+}
+
+.reader-controls-panel {
+    flex: 0 0 auto;
     background: #ffffff;
 }
 
@@ -564,6 +570,20 @@ th {
     padding: 10px;
     border-bottom: 1px solid #d7dde3;
     background: #f8fafc;
+}
+
+.reader-controls-toggle {
+    position: absolute;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 8;
+    display: none;
+    min-width: 58px;
+    min-height: 38px;
+    border-radius: 999px;
+    border-color: rgba(23, 32, 42, 0.38);
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 8px 20px rgba(23, 32, 42, 0.18);
 }
 
 .reader-toolbar button,
@@ -650,12 +670,61 @@ th {
     box-shadow: 0 12px 28px rgba(28, 39, 49, 0.16);
 }
 
+.pdf-page-stack {
+    position: relative;
+    overflow: hidden;
+    max-width: 100%;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(28, 39, 49, 0.22);
+}
+
 .pdf-page-surface canvas {
     display: block;
     max-width: 100%;
     height: auto;
     background: #fff;
-    box-shadow: 0 12px 28px rgba(28, 39, 49, 0.22);
+}
+
+.textLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    overflow: hidden;
+    line-height: 1;
+    opacity: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    user-select: text;
+    -webkit-user-select: text;
+    touch-action: pan-x pan-y;
+    forced-color-adjust: none;
+}
+
+.textLayer span,
+.textLayer br {
+    position: absolute;
+    color: transparent;
+    cursor: text;
+    margin: 0;
+    white-space: pre;
+    transform-origin: 0% 0%;
+}
+
+.textLayer span::selection {
+    background: rgba(15, 108, 129, 0.28);
+    color: transparent;
+}
+
+.textLayer .markedContent {
+    top: 0;
+    height: 0;
+}
+
+.textLayer .endOfContent {
+    position: absolute;
+    inset: auto 0 0;
+    display: block;
+    height: 1px;
 }
 
 .pdf-page-loading {
@@ -706,6 +775,72 @@ th {
     min-height: 100vh;
     border: 0;
     border-radius: 0;
+}
+
+.reader-app.is-immersive {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 100vh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+}
+
+.reader-app.is-immersive .reader-controls-toggle,
+.reader-app.is-compact-reader .reader-controls-toggle {
+    display: inline-flex;
+}
+
+.reader-app.is-immersive .reader-controls-panel,
+.reader-app.is-compact-reader .reader-controls-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 7;
+    max-height: min(72vh, 520px);
+    max-height: min(72dvh, 520px);
+    overflow: auto;
+    border-bottom: 1px solid #cfd8e1;
+    box-shadow: 0 16px 34px rgba(23, 32, 42, 0.18);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(calc(-100% - 10px));
+    transition: opacity 160ms ease, transform 180ms ease;
+}
+
+.reader-app.is-immersive.is-controls-open .reader-controls-panel,
+.reader-app.is-compact-reader.is-controls-open .reader-controls-panel {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.reader-app.is-immersive .canvas-shell {
+    padding: 8px 0 64px;
+    background: #1f2730;
+}
+
+.reader-app.is-immersive .pdf-pages {
+    gap: 10px;
+}
+
+.reader-app.is-immersive .pdf-page-label {
+    display: none;
+}
+
+body.reader-immersive-lock {
+    overflow: hidden;
+}
+
+body.reader-immersive-lock .viewer-page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
 }
 
 html[data-contrast-theme="high"] body {
@@ -776,6 +911,12 @@ html[data-contrast-theme="high"] .pdf-page-surface canvas {
     filter: contrast(1.45) brightness(1.08);
 }
 
+html[data-contrast-theme="high"] .reader-controls-toggle {
+    border-color: #fff;
+    background: #000;
+    color: #fff;
+}
+
 html[data-contrast-theme="dark"] body {
     background: #111827;
     color: #e5e7eb;
@@ -842,6 +983,12 @@ html[data-contrast-theme="dark"] td {
 
 html[data-contrast-theme="dark"] .pdf-page-surface canvas {
     filter: invert(1) hue-rotate(180deg) contrast(1.08);
+}
+
+html[data-contrast-theme="dark"] .reader-controls-toggle {
+    border-color: #6b7280;
+    background: rgba(17, 24, 39, 0.94);
+    color: #f9fafb;
 }
 
 html[data-contrast-theme="sepia"] body {
@@ -912,6 +1059,12 @@ html[data-contrast-theme="sepia"] .pdf-page-surface canvas {
     filter: sepia(0.5) contrast(1.04) brightness(0.98);
 }
 
+html[data-contrast-theme="sepia"] .reader-controls-toggle {
+    border-color: #ad966d;
+    background: rgba(255, 253, 245, 0.94);
+    color: #332718;
+}
+
 html[data-contrast-theme="soft"] body {
     background: #f5fbf7;
     color: #18312b;
@@ -980,7 +1133,19 @@ html[data-contrast-theme="soft"] .pdf-page-surface canvas {
     filter: contrast(0.94) brightness(1.04);
 }
 
+html[data-contrast-theme="soft"] .reader-controls-toggle {
+    border-color: #9fbeb6;
+    background: rgba(255, 255, 255, 0.94);
+    color: #18312b;
+}
+
 @media (max-width: 640px) {
+    .viewer-page {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+    }
+
     .site-contrast-control {
         justify-content: flex-start;
         margin-bottom: -12px;
@@ -1024,19 +1189,67 @@ html[data-contrast-theme="soft"] .pdf-page-surface canvas {
         flex-direction: column;
     }
 
+    .reader-app {
+        height: 100vh;
+        height: 100dvh;
+        min-height: 100vh;
+        min-height: 100dvh;
+        border: 0;
+        border-radius: 0;
+    }
+
+    .reader-header {
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .reader-header h1 {
+        margin-bottom: 4px;
+        font-size: 17px;
+        line-height: 1.25;
+    }
+
     .reader-toolbar {
         align-items: stretch;
+        gap: 6px;
+        padding: 8px;
     }
 
     .reader-toolbar button,
     .reader-toolbar select,
     .reader-toolbar input {
-        flex: 1 1 130px;
+        flex: 1 1 calc(50% - 6px);
         width: auto;
+        min-height: 36px;
+        padding: 7px 8px;
+        font-size: 13px;
     }
 
     .reader-workspace {
         flex-direction: column;
+    }
+
+    .canvas-shell {
+        padding: 8px 0 64px;
+        background: #1f2730;
+    }
+
+    .pdf-pages {
+        gap: 10px;
+    }
+
+    .pdf-page-label {
+        display: none;
+    }
+
+    .pdf-page-surface {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .pdf-page-stack {
+        box-shadow: none;
     }
 
     .book-list li {

@@ -2,6 +2,10 @@ import secrets
 import json
 import mimetypes
 import logging
+import os
+import shutil
+import subprocess
+import tempfile
 from io import BytesIO
 from datetime import timedelta
 from functools import wraps
@@ -126,11 +130,20 @@ def redirect_or_json(request, view_name):
 
 def storage_failure_response(request, action, exc):
     logger.warning("%s failed while writing to storage: %s", action, exc)
-    message = (
-        f"{action} failed while saving to storage. Check your Cloudinary credentials "
-        "and run `python manage.py cloudinary_status --write-test` in Render Shell. "
-        f"Storage error: {exc}"
-    )
+    error_text = str(exc)
+    if "File size too large" in error_text:
+        message = (
+            f"{action} failed because Cloudinary rejected the file size. "
+            "PDF compression is enabled, but this file may still be above your "
+            "Cloudinary account limit. Try a smaller/lower-resolution PDF or upgrade "
+            f"the Cloudinary account. Storage error: {exc}"
+        )
+    else:
+        message = (
+            f"{action} failed while saving to storage. Check your Cloudinary credentials "
+            "and run `python manage.py cloudinary_status --write-test` in Render Shell. "
+            f"Storage error: {exc}"
+        )
     if wants_json_response(request):
         return JsonResponse({"error": message}, status=500)
 
@@ -165,6 +178,141 @@ def exceeds_size_limit(uploaded_file, size_limit):
         and size_limit > 0
         and uploaded_file.size > size_limit
     )
+
+
+def file_size_label(size):
+    if size is None:
+        return "unknown size"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def write_upload_to_path(uploaded_file, path):
+    uploaded_file.seek(0)
+    with open(path, "wb") as destination:
+        for chunk in uploaded_file.chunks():
+            destination.write(chunk)
+    uploaded_file.seek(0)
+
+
+def compress_pdf_with_ghostscript(uploaded_file, filename):
+    ghostscript = shutil.which(getattr(settings, "PDF_COMPRESSOR_BINARY", "gs"))
+    if not ghostscript:
+        return None, "Ghostscript is not available in this environment."
+
+    best_output = None
+    best_size = None
+    original_size = uploaded_file.size
+    presets = getattr(settings, "PDF_COMPRESSION_PRESETS", ["/ebook", "/screen"])
+    timeout = getattr(settings, "PDF_COMPRESSION_TIMEOUT", 120)
+    target_size = getattr(settings, "CLOUDINARY_MAX_UPLOAD_SIZE", None)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        input_path = os.path.join(temp_dir, "input.pdf")
+        write_upload_to_path(uploaded_file, input_path)
+
+        for index, preset in enumerate(presets):
+            preset = preset if preset.startswith("/") else f"/{preset}"
+            output_path = os.path.join(temp_dir, f"compressed-{index}.pdf")
+            command = [
+                ghostscript,
+                "-sDEVICE=pdfwrite",
+                "-dCompatibilityLevel=1.4",
+                f"-dPDFSETTINGS={preset}",
+                "-dDetectDuplicateImages=true",
+                "-dCompressFonts=true",
+                "-dSubsetFonts=true",
+                "-dNOPAUSE",
+                "-dQUIET",
+                "-dBATCH",
+                f"-sOutputFile={output_path}",
+                input_path,
+            ]
+            try:
+                subprocess.run(
+                    command,
+                    check=True,
+                    capture_output=True,
+                    timeout=timeout,
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                logger.warning("PDF compression failed with preset %s: %s", preset, exc)
+                continue
+
+            if not os.path.exists(output_path):
+                continue
+
+            output_size = os.path.getsize(output_path)
+            if output_size <= 0 or output_size >= original_size:
+                continue
+
+            with open(output_path, "rb") as compressed_pdf:
+                output_bytes = compressed_pdf.read()
+
+            if best_size is None or output_size < best_size:
+                best_size = output_size
+                best_output = output_bytes
+
+            if target_size and output_size <= target_size:
+                break
+
+    if not best_output:
+        return None, "Ghostscript could not reduce this PDF."
+
+    return ContentFile(best_output, name=filename), ""
+
+
+def prepare_pdf_for_storage(uploaded_file, filename):
+    cloudinary_limit = getattr(settings, "CLOUDINARY_MAX_UPLOAD_SIZE", None)
+    should_compress = (
+        getattr(settings, "USE_CLOUDINARY_STORAGE", False)
+        and getattr(settings, "PDF_COMPRESSION_ENABLED", True)
+        and (
+            exceeds_size_limit(uploaded_file, cloudinary_limit)
+            or uploaded_file.size >= getattr(settings, "PDF_COMPRESSION_MIN_SIZE", 0)
+        )
+    )
+
+    if not should_compress:
+        if exceeds_size_limit(uploaded_file, cloudinary_limit):
+            return (
+                None,
+                "Cloudinary rejected this file size before upload. "
+                f"Maximum is {file_size_label(cloudinary_limit)}, "
+                f"but this PDF is {file_size_label(uploaded_file.size)}.",
+                "",
+            )
+        return uploaded_file, "", ""
+
+    compressed_file, compression_error = compress_pdf_with_ghostscript(
+        uploaded_file,
+        filename,
+    )
+    if compression_error:
+        if exceeds_size_limit(uploaded_file, cloudinary_limit):
+            return (
+                None,
+                "This PDF is larger than your Cloudinary upload limit "
+                f"({file_size_label(cloudinary_limit)}), and compression failed: "
+                f"{compression_error}",
+                "",
+            )
+        return uploaded_file, "", ""
+
+    if exceeds_size_limit(compressed_file, cloudinary_limit):
+        return (
+            None,
+            "This PDF is still larger than your Cloudinary upload limit after "
+            f"compression. Original: {file_size_label(uploaded_file.size)}. "
+            f"Compressed: {file_size_label(compressed_file.size)}. "
+            f"Limit: {file_size_label(cloudinary_limit)}.",
+            "",
+        )
+
+    notice = (
+        "PDF compressed before upload: "
+        f"{file_size_label(uploaded_file.size)} to {file_size_label(compressed_file.size)}."
+    )
+    return compressed_file, "", notice
 
 
 def validate_thumbnail(uploaded_file):
@@ -664,6 +812,11 @@ def upload_pdf(request):
         return redirect_or_json(request, "admin_dashboard")
 
     uploaded_file.name = filename
+    uploaded_file, pdf_error, pdf_notice = prepare_pdf_for_storage(uploaded_file, filename)
+    if pdf_error:
+        messages.error(request, pdf_error)
+        return redirect_or_json(request, "admin_dashboard")
+
     thumbnail_filename = thumbnail_file.name if thumbnail_file else ""
     try:
         PDFBook.objects.create(
@@ -677,7 +830,10 @@ def upload_pdf(request):
     except Exception as exc:
         return storage_failure_response(request, "PDF upload", exc)
 
-    messages.success(request, "PDF uploaded.")
+    if pdf_notice:
+        messages.success(request, f"PDF uploaded. {pdf_notice}")
+    else:
+        messages.success(request, "PDF uploaded.")
     return redirect_or_json(request, "admin_dashboard")
 
 
