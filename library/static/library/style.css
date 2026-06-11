@@ -636,6 +636,25 @@ th {
     font-weight: 700;
 }
 
+.reader-photo-list {
+    display: block;
+}
+
+.reader-photo-list summary {
+    cursor: pointer;
+}
+
+.reader-photo-list ul {
+    display: grid;
+    gap: 4px;
+    margin: 6px 0 0 18px;
+    padding: 0;
+}
+
+.reader-photo-list li {
+    margin: 0;
+}
+
 .reader-toolbar button.is-active {
     border-color: #17202a;
     background: #17202a;

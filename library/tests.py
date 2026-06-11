@@ -223,6 +223,7 @@ class BookAccessTests(TestCase):
         allowed_response.close()
 
         viewer_response = self.client.get(reverse("viewer", args=[self.book.id]))
+        self.assertContains(viewer_response, "DATABASE EXAMS")
         self.assertContains(viewer_response, "study.png")
 
     def test_admin_can_add_book_link_and_access_follows_book_access(self):
