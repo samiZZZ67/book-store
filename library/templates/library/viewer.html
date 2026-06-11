@@ -46,29 +46,27 @@
             <input id="page-number" type="number" min="1" value="1">
             <span id="page-count">/ 0</span>
             <button id="search-page" type="button">Search Page</button>
-        </div>
-        {% if book_links or book_photos %}
-            <div class="reader-resources" aria-label="Book resources">
-                {% if book_links %}
-                    <div class="reader-resource-group">
-                        <span class="reader-resource-label">Links</span>
-                        {% for link in book_links %}
-                            <a href="{% url 'open_book_link' book.id link.id %}" target="_blank" rel="noopener">{{ link.label }}</a>
+            {% if book_photos %}
+                <details class="reader-photo-list">
+                    <summary>DATABASE EXAMS</summary>
+                    <ul>
+                        {% for photo in book_photos %}
+                            <li>
+                                <a href="{% url 'book_photo' book.id photo.id %}" target="_blank" rel="noopener">{{ photo.filename }}</a>
+                            </li>
                         {% endfor %}
-                    </div>
-                {% endif %}
-                {% if book_photos %}
-                    <details class="reader-resource-group reader-photo-list">
-                        <summary class="reader-resource-label">DATABASE EXAMS</summary>
-                        <ul>
-                            {% for photo in book_photos %}
-                                <li>
-                                    <a href="{% url 'book_photo' book.id photo.id %}" target="_blank" rel="noopener">{{ photo.filename }}</a>
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    </details>
-                {% endif %}
+                    </ul>
+                </details>
+            {% endif %}
+        </div>
+        {% if book_links %}
+            <div class="reader-resources" aria-label="Book resources">
+                <div class="reader-resource-group">
+                    <span class="reader-resource-label">Links</span>
+                    {% for link in book_links %}
+                        <a href="{% url 'open_book_link' book.id link.id %}" target="_blank" rel="noopener">{{ link.label }}</a>
+                    {% endfor %}
+                </div>
             </div>
         {% endif %}
     </div>

@@ -637,22 +637,52 @@ th {
 }
 
 .reader-photo-list {
-    display: block;
+    position: relative;
+    display: inline-flex;
+    margin: 0;
 }
 
 .reader-photo-list summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    border: 1px solid #0f6c81;
+    border-radius: 8px;
+    background: #0f6c81;
+    color: #fff;
+    padding: 7px 10px;
+    font-weight: 700;
     cursor: pointer;
+    list-style: none;
+}
+
+.reader-photo-list summary::-webkit-details-marker {
+    display: none;
 }
 
 .reader-photo-list ul {
     display: grid;
-    gap: 4px;
-    margin: 6px 0 0 18px;
-    padding: 0;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    min-width: 220px;
+    max-width: min(320px, 80vw);
+    max-height: 260px;
+    overflow: auto;
+    gap: 6px;
+    margin: 0;
+    border: 1px solid #cbd5df;
+    border-radius: 8px;
+    background: #fff;
+    padding: 10px 10px 10px 28px;
+    box-shadow: 0 10px 24px rgba(23, 32, 42, 0.16);
 }
 
 .reader-photo-list li {
     margin: 0;
+    overflow-wrap: anywhere;
 }
 
 .reader-toolbar button.is-active {
@@ -969,7 +999,9 @@ html[data-contrast-theme="high"] .reader-loading {
 html[data-contrast-theme="high"] input,
 html[data-contrast-theme="high"] select,
 html[data-contrast-theme="high"] .button,
-html[data-contrast-theme="high"] button {
+html[data-contrast-theme="high"] button,
+html[data-contrast-theme="high"] .reader-photo-list summary,
+html[data-contrast-theme="high"] .reader-photo-list ul {
     border-color: #fff;
     background: #000;
     color: #fff;
@@ -1045,7 +1077,9 @@ html[data-contrast-theme="dark"] .reader-loading {
 html[data-contrast-theme="dark"] input,
 html[data-contrast-theme="dark"] select,
 html[data-contrast-theme="dark"] .button,
-html[data-contrast-theme="dark"] button {
+html[data-contrast-theme="dark"] button,
+html[data-contrast-theme="dark"] .reader-photo-list summary,
+html[data-contrast-theme="dark"] .reader-photo-list ul {
     border-color: #6b7280;
     background: #111827;
     color: #f9fafb;
@@ -1121,7 +1155,9 @@ html[data-contrast-theme="sepia"] .reader-loading {
 html[data-contrast-theme="sepia"] input,
 html[data-contrast-theme="sepia"] select,
 html[data-contrast-theme="sepia"] .button,
-html[data-contrast-theme="sepia"] button {
+html[data-contrast-theme="sepia"] button,
+html[data-contrast-theme="sepia"] .reader-photo-list summary,
+html[data-contrast-theme="sepia"] .reader-photo-list ul {
     border-color: #ad966d;
     background: #fffdf5;
     color: #332718;
@@ -1197,7 +1233,9 @@ html[data-contrast-theme="soft"] .reader-loading {
 html[data-contrast-theme="soft"] input,
 html[data-contrast-theme="soft"] select,
 html[data-contrast-theme="soft"] .button,
-html[data-contrast-theme="soft"] button {
+html[data-contrast-theme="soft"] button,
+html[data-contrast-theme="soft"] .reader-photo-list summary,
+html[data-contrast-theme="soft"] .reader-photo-list ul {
     border-color: #9fbeb6;
     background: #ffffff;
     color: #18312b;
@@ -1332,11 +1370,36 @@ html[data-contrast-theme="soft"] .reader-controls-toggle {
         flex-direction: column;
     }
 
+    .reader-photo-list,
+    .reader-photo-list summary {
+        width: 100%;
+    }
+
+    .reader-photo-list ul {
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: none;
+    }
+
     .reader-toolbar button,
     .reader-toolbar select,
     .reader-toolbar input {
         flex: 1 1 calc(50% - 6px);
         width: auto;
+        min-height: 36px;
+        padding: 7px 8px;
+        font-size: 13px;
+    }
+
+    .reader-toolbar .reader-photo-list {
+        flex: 1 1 calc(50% - 6px);
+        width: auto;
+        min-height: 36px;
+        font-size: 13px;
+    }
+
+    .reader-toolbar .reader-photo-list summary {
         min-height: 36px;
         padding: 7px 8px;
         font-size: 13px;
