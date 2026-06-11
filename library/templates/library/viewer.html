@@ -47,6 +47,26 @@
             <span id="page-count">/ 0</span>
             <button id="search-page" type="button">Search Page</button>
         </div>
+        {% if book_links or book_photos %}
+            <div class="reader-resources" aria-label="Book resources">
+                {% if book_links %}
+                    <div class="reader-resource-group">
+                        <span class="reader-resource-label">Links</span>
+                        {% for link in book_links %}
+                            <a href="{% url 'open_book_link' book.id link.id %}" target="_blank" rel="noopener">{{ link.label }}</a>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                {% if book_photos %}
+                    <div class="reader-resource-group">
+                        <span class="reader-resource-label">Photos</span>
+                        {% for photo in book_photos %}
+                            <a href="{% url 'book_photo' book.id photo.id %}" target="_blank" rel="noopener">{{ photo.filename }}</a>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        {% endif %}
     </div>
 
     <button

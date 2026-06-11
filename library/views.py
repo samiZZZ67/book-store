@@ -15,7 +15,9 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
+from django.core.validators import URLValidator
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -26,7 +28,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
-from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
+from .models import AccessRequest, BookLink, BookPhoto, PDFBook, TelegramAdmin, UserProfile
 from .storage import CloudinaryDeliveryError, cloudinary_file_response, cloudinary_range_response
 from .telegram import (
     configured_admin_usernames,
@@ -61,6 +63,8 @@ THUMBNAIL_CONTENT_TYPES = {
     ".gif": "image/gif",
     ".webp": "image/webp",
 }
+PHOTO_SIGNATURES = THUMBNAIL_SIGNATURES
+PHOTO_CONTENT_TYPES = THUMBNAIL_CONTENT_TYPES
 
 
 def ensure_profile(user):
@@ -335,6 +339,32 @@ def validate_thumbnail(uploaded_file):
 
     if extension == ".webp" and header[8:12] != b"WEBP":
         return False, "Thumbnail file is not a valid WebP image."
+
+    uploaded_file.name = filename
+    return True, ""
+
+
+def validate_book_photo(uploaded_file):
+    if not uploaded_file:
+        return False, "Choose at least one photo to upload."
+
+    max_photo_size = getattr(settings, "MAX_PHOTO_SIZE", settings.MAX_THUMBNAIL_SIZE)
+    if exceeds_size_limit(uploaded_file, max_photo_size):
+        return False, "Photo image is too large."
+
+    filename = get_valid_filename(uploaded_file.name)
+    extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    signatures = PHOTO_SIGNATURES.get(extension)
+    if not signatures:
+        return False, "Photos must be JPG, PNG, GIF, or WebP."
+
+    header = uploaded_file.read(16)
+    uploaded_file.seek(0)
+    if not any(header.startswith(signature) for signature in signatures):
+        return False, "Photo file does not match its image type."
+
+    if extension == ".webp" and header[8:12] != b"WEBP":
+        return False, "Photo file is not a valid WebP image."
 
     uploaded_file.name = filename
     return True, ""
@@ -901,6 +931,112 @@ def remove_book_thumbnail(request, book_id):
 
 @require_POST
 @admin_required
+def upload_book_photos(request, book_id):
+    book = get_object_or_404(PDFBook, pk=book_id)
+    photo_files = request.FILES.getlist("photos")
+
+    if not photo_files:
+        messages.error(request, "Choose one or more photos to upload.")
+        return redirect_or_json(request, "admin_dashboard")
+
+    for photo_file in photo_files:
+        photo_valid, photo_error = validate_book_photo(photo_file)
+        if not photo_valid:
+            messages.error(request, f"{photo_file.name}: {photo_error}")
+            return redirect_or_json(request, "admin_dashboard")
+
+    created_count = 0
+    try:
+        for photo_file in photo_files:
+            BookPhoto.objects.create(
+                book=book,
+                image_file=photo_file,
+                original_filename=photo_file.name,
+                uploaded_by=request.user,
+            )
+            created_count += 1
+    except Exception as exc:
+        return storage_failure_response(request, "Photo upload", exc)
+
+    label = "photo" if created_count == 1 else "photos"
+    messages.success(request, f"{created_count} {label} uploaded for {book.title}.")
+    return redirect_or_json(request, "admin_dashboard")
+
+
+@require_POST
+@admin_required
+def add_book_link(request, book_id):
+    book = get_object_or_404(PDFBook, pk=book_id)
+    link_title = request.POST.get("link_title", "").strip()
+    link_url = request.POST.get("link_url", "").strip()
+
+    if not link_url:
+        messages.error(request, "Enter a link URL.")
+        return redirect_or_json(request, "admin_dashboard")
+
+    try:
+        URLValidator(schemes=["http", "https"])(link_url)
+    except ValidationError:
+        messages.error(request, "Enter a valid http or https link.")
+        return redirect_or_json(request, "admin_dashboard")
+
+    BookLink.objects.create(
+        book=book,
+        title=link_title[:150],
+        url=link_url,
+        added_by=request.user,
+    )
+    messages.success(request, f"Link added for {book.title}.")
+    return redirect_or_json(request, "admin_dashboard")
+
+
+@never_cache
+@login_required
+def book_photo(request, book_id, photo_id):
+    photo = get_object_or_404(
+        BookPhoto.objects.select_related("book"),
+        pk=photo_id,
+        book_id=book_id,
+    )
+    if not user_can_read(request.user, photo.book):
+        return HttpResponseForbidden("Access approval is required for this book.")
+
+    content_type = (
+        PHOTO_CONTENT_TYPES.get("." + photo.image_file.name.rsplit(".", 1)[-1].lower())
+        or mimetypes.guess_type(photo.image_file.name)[0]
+        or "application/octet-stream"
+    )
+    try:
+        response = FileResponse(photo.image_file.open("rb"), content_type=content_type)
+    except Exception as exc:
+        logger.warning("Could not deliver book photo %s: %s", photo.image_file.name, exc)
+        return HttpResponse(
+            "Could not load this photo from storage.",
+            status=502,
+            content_type="text/plain",
+        )
+
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@never_cache
+@login_required
+def open_book_link(request, book_id, link_id):
+    book_link = get_object_or_404(
+        BookLink.objects.select_related("book"),
+        pk=link_id,
+        book_id=book_id,
+    )
+    if not user_can_read(request.user, book_link.book):
+        return HttpResponseForbidden("Access approval is required for this book.")
+
+    return redirect(book_link.url)
+
+
+@require_POST
+@admin_required
 def decide_request(request, request_id, decision):
     if decision not in {AccessRequest.STATUS_APPROVED, AccessRequest.STATUS_REJECTED}:
         raise Http404("Not found")
@@ -989,6 +1125,8 @@ def viewer(request, book_id):
         {
             "current_user": current_account(request),
             "book": {"id": book.id, "title": book.title},
+            "book_links": BookLink.objects.filter(book=book),
+            "book_photos": BookPhoto.objects.filter(book=book),
             "stream_url": stream_url,
         },
     )

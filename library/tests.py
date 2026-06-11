@@ -12,7 +12,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 
-from .models import AccessRequest, PDFBook, TelegramAdmin, UserProfile
+from .models import AccessRequest, BookLink, BookPhoto, PDFBook, TelegramAdmin, UserProfile
 from .storage import CloudinaryDeliveryError, CloudinaryRawStorage, cloudinary_file_response
 from .views import exceeds_size_limit, prepare_pdf_for_storage
 
@@ -167,6 +167,96 @@ class BookAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "image/jpeg")
         response.close()
+
+    def test_admin_dashboard_has_book_photo_and_link_buttons(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("admin_dashboard"))
+
+        self.assertContains(response, "Upload Photos")
+        self.assertContains(response, "Add Link")
+
+    def test_admin_can_upload_batch_photos_for_book(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("upload_book_photos", args=[self.book.id]),
+            {
+                "photos": [
+                    self.thumbnail_file("first.png"),
+                    self.thumbnail_file("second.png"),
+                ]
+            },
+        )
+
+        self.assertRedirects(response, reverse("admin_dashboard"))
+        photos = BookPhoto.objects.filter(book=self.book)
+        self.assertEqual(photos.count(), 2)
+        self.assertEqual(
+            sorted(photos.values_list("original_filename", flat=True)),
+            ["first.png", "second.png"],
+        )
+
+    def test_book_photo_access_follows_book_access(self):
+        photo = BookPhoto.objects.create(
+            book=self.book,
+            image_file=self.thumbnail_file("study.png"),
+            original_filename="study.png",
+            uploaded_by=self.admin,
+        )
+        photo_url = reverse("book_photo", args=[self.book.id, photo.id])
+
+        self.client.force_login(self.user)
+        blocked_response = self.client.get(photo_url)
+        self.assertEqual(blocked_response.status_code, 403)
+
+        AccessRequest.objects.create(
+            user=self.user,
+            book=self.book,
+            status=AccessRequest.STATUS_APPROVED,
+            decided_by=self.admin,
+        )
+
+        allowed_response = self.client.get(photo_url)
+        self.assertEqual(allowed_response.status_code, 200)
+        self.assertEqual(allowed_response["Content-Type"], "image/png")
+        allowed_response.close()
+
+        viewer_response = self.client.get(reverse("viewer", args=[self.book.id]))
+        self.assertContains(viewer_response, "study.png")
+
+    def test_admin_can_add_book_link_and_access_follows_book_access(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("add_book_link", args=[self.book.id]),
+            {
+                "link_url": "https://example.com/study-guide",
+                "link_title": "Study guide",
+            },
+        )
+
+        self.assertRedirects(response, reverse("admin_dashboard"))
+        book_link = BookLink.objects.get(book=self.book)
+        self.assertEqual(book_link.title, "Study guide")
+
+        link_url = reverse("open_book_link", args=[self.book.id, book_link.id])
+        self.client.force_login(self.user)
+        blocked_response = self.client.get(link_url)
+        self.assertEqual(blocked_response.status_code, 403)
+
+        AccessRequest.objects.create(
+            user=self.user,
+            book=self.book,
+            status=AccessRequest.STATUS_APPROVED,
+            decided_by=self.admin,
+        )
+
+        allowed_response = self.client.get(link_url)
+        self.assertEqual(allowed_response.status_code, 302)
+        self.assertEqual(allowed_response["Location"], "https://example.com/study-guide")
+
+        viewer_response = self.client.get(reverse("viewer", args=[self.book.id]))
+        self.assertContains(viewer_response, "Study guide")
 
     def test_thumbnail_delivery_failure_returns_controlled_error(self):
         self.book.thumbnail.name = "book_thumbnails/missing.jpg"

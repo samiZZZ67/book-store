@@ -16,6 +16,16 @@ urlpatterns = [
     ),
     path("books/<str:book_id>/thumbnail/", views.book_thumbnail, name="book_thumbnail"),
     path("books/<str:book_id>/open/", views.open_pdf, name="open_pdf"),
+    path(
+        "books/<str:book_id>/photos/<str:photo_id>/",
+        views.book_photo,
+        name="book_photo",
+    ),
+    path(
+        "books/<str:book_id>/links/<str:link_id>/open/",
+        views.open_book_link,
+        name="open_book_link",
+    ),
     path("books/<str:book_id>/", views.viewer, name="viewer"),
     path("books/<str:book_id>/file/", views.pdf_stream, name="pdf_stream"),
     path("site-admin/", views.admin_dashboard, name="admin_dashboard"),
@@ -54,6 +64,16 @@ urlpatterns = [
         "site-admin/books/<str:book_id>/thumbnail/remove/",
         views.remove_book_thumbnail,
         name="remove_book_thumbnail",
+    ),
+    path(
+        "site-admin/books/<str:book_id>/photos/",
+        views.upload_book_photos,
+        name="upload_book_photos",
+    ),
+    path(
+        "site-admin/books/<str:book_id>/links/",
+        views.add_book_link,
+        name="add_book_link",
     ),
     path("site-admin/books/<str:book_id>/delete/", views.delete_book, name="delete_book"),
     path(

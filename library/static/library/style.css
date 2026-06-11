@@ -513,6 +513,23 @@ th {
     margin: 0;
 }
 
+.book-resource-form {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    margin: 6px 0;
+}
+
+.book-link-form {
+    grid-template-columns: minmax(160px, 1.2fr) minmax(120px, 0.8fr) auto;
+}
+
+.book-resource-form input,
+.book-resource-form button {
+    margin: 0;
+}
+
 .inline {
     display: inline;
 }
@@ -595,6 +612,28 @@ th {
 
 .reader-toolbar button {
     padding: 7px 10px;
+}
+
+.reader-resources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    padding: 8px 10px 10px;
+    border-bottom: 1px solid #d7dde3;
+    background: #ffffff;
+    font-size: 14px;
+}
+
+.reader-resource-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: center;
+}
+
+.reader-resource-label {
+    color: #526170;
+    font-weight: 700;
 }
 
 .reader-toolbar button.is-active {
@@ -900,6 +939,7 @@ html[data-contrast-theme="high"] .message,
 html[data-contrast-theme="high"] .reader-app,
 html[data-contrast-theme="high"] .reader-header,
 html[data-contrast-theme="high"] .reader-toolbar,
+html[data-contrast-theme="high"] .reader-resources,
 html[data-contrast-theme="high"] .pdf-page-label,
 html[data-contrast-theme="high"] .reader-loading {
     border-color: #fff;
@@ -927,6 +967,7 @@ html[data-contrast-theme="high"] .small,
 html[data-contrast-theme="high"] .book-meta,
 html[data-contrast-theme="high"] .reader-progress,
 html[data-contrast-theme="high"] .reader-page-jump,
+html[data-contrast-theme="high"] .reader-resource-label,
 html[data-contrast-theme="high"] .table-note,
 html[data-contrast-theme="high"] .site-contrast-control label,
 html[data-contrast-theme="high"] .pdf-page-loading,
@@ -974,6 +1015,7 @@ html[data-contrast-theme="dark"] .message,
 html[data-contrast-theme="dark"] .reader-app,
 html[data-contrast-theme="dark"] .reader-header,
 html[data-contrast-theme="dark"] .reader-toolbar,
+html[data-contrast-theme="dark"] .reader-resources,
 html[data-contrast-theme="dark"] .pdf-page-label,
 html[data-contrast-theme="dark"] .reader-loading {
     border-color: #4b5563;
@@ -1001,6 +1043,7 @@ html[data-contrast-theme="dark"] .small,
 html[data-contrast-theme="dark"] .book-meta,
 html[data-contrast-theme="dark"] .reader-progress,
 html[data-contrast-theme="dark"] .reader-page-jump,
+html[data-contrast-theme="dark"] .reader-resource-label,
 html[data-contrast-theme="dark"] .table-note,
 html[data-contrast-theme="dark"] .site-contrast-control label,
 html[data-contrast-theme="dark"] .pdf-page-loading,
@@ -1048,6 +1091,7 @@ html[data-contrast-theme="sepia"] .message,
 html[data-contrast-theme="sepia"] .reader-app,
 html[data-contrast-theme="sepia"] .reader-header,
 html[data-contrast-theme="sepia"] .reader-toolbar,
+html[data-contrast-theme="sepia"] .reader-resources,
 html[data-contrast-theme="sepia"] .pdf-page-label,
 html[data-contrast-theme="sepia"] .reader-loading {
     border-color: #c8b78f;
@@ -1075,6 +1119,7 @@ html[data-contrast-theme="sepia"] .small,
 html[data-contrast-theme="sepia"] .book-meta,
 html[data-contrast-theme="sepia"] .reader-progress,
 html[data-contrast-theme="sepia"] .reader-page-jump,
+html[data-contrast-theme="sepia"] .reader-resource-label,
 html[data-contrast-theme="sepia"] .table-note,
 html[data-contrast-theme="sepia"] .site-contrast-control label,
 html[data-contrast-theme="sepia"] .pdf-page-loading,
@@ -1122,6 +1167,7 @@ html[data-contrast-theme="soft"] .message,
 html[data-contrast-theme="soft"] .reader-app,
 html[data-contrast-theme="soft"] .reader-header,
 html[data-contrast-theme="soft"] .reader-toolbar,
+html[data-contrast-theme="soft"] .reader-resources,
 html[data-contrast-theme="soft"] .pdf-page-label,
 html[data-contrast-theme="soft"] .reader-loading {
     border-color: #b9d4cc;
@@ -1149,6 +1195,7 @@ html[data-contrast-theme="soft"] .small,
 html[data-contrast-theme="soft"] .book-meta,
 html[data-contrast-theme="soft"] .reader-progress,
 html[data-contrast-theme="soft"] .reader-page-jump,
+html[data-contrast-theme="soft"] .reader-resource-label,
 html[data-contrast-theme="soft"] .table-note,
 html[data-contrast-theme="soft"] .site-contrast-control label,
 html[data-contrast-theme="soft"] .pdf-page-loading,
@@ -1223,6 +1270,11 @@ html[data-contrast-theme="soft"] .reader-controls-toggle {
         grid-template-columns: 1fr;
     }
 
+    .book-resource-form,
+    .book-link-form {
+        grid-template-columns: 1fr;
+    }
+
     .input-row,
     .reader-header {
         align-items: stretch;
@@ -1253,6 +1305,12 @@ html[data-contrast-theme="soft"] .reader-controls-toggle {
         align-items: stretch;
         gap: 6px;
         padding: 8px;
+    }
+
+    .reader-resources,
+    .reader-resource-group {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .reader-toolbar button,

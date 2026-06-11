@@ -204,6 +204,17 @@
                         </td>
                         <td>
                             <a class="button button-compact" href="{% url 'open_pdf' book.id %}" target="_blank" rel="noopener">Open</a>
+                            <form class="book-resource-form" method="post" action="{% url 'upload_book_photos' book.id %}" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                <input name="photos" type="file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" multiple required>
+                                <button class="button-compact" type="submit">Upload Photos</button>
+                            </form>
+                            <form class="book-resource-form book-link-form" method="post" action="{% url 'add_book_link' book.id %}">
+                                {% csrf_token %}
+                                <input name="link_url" type="url" placeholder="https://example.com" required>
+                                <input name="link_title" type="text" placeholder="Link title">
+                                <button class="button-compact" type="submit">Add Link</button>
+                            </form>
                             <form class="inline" method="post" action="{% url 'delete_book' book.id %}">
                                 {% csrf_token %}
                                 <button class="button-compact button-danger" type="submit">Delete</button>

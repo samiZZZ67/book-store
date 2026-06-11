@@ -119,6 +119,62 @@ class PDFBook(models.Model):
         return self.title
 
 
+class BookPhoto(models.Model):
+    book = models.ForeignKey(
+        PDFBook,
+        on_delete=models.CASCADE,
+        related_name="photos",
+    )
+    image_file = models.FileField(upload_to="book_photos/")
+    original_filename = models.CharField(max_length=255)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="uploaded_book_photos",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def filename(self):
+        return self.original_filename
+
+    def __str__(self):
+        return f"{self.book.title} - {self.original_filename}"
+
+
+class BookLink(models.Model):
+    book = models.ForeignKey(
+        PDFBook,
+        on_delete=models.CASCADE,
+        related_name="links",
+    )
+    title = models.CharField(max_length=150, blank=True)
+    url = models.URLField(max_length=2048)
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="added_book_links",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def label(self):
+        return self.title or self.url
+
+    def __str__(self):
+        return f"{self.book.title} - {self.label}"
+
+
 class TelegramAdmin(models.Model):
     username = models.CharField(max_length=64, unique=True)
     chat_id = models.BigIntegerField(null=True, blank=True)
